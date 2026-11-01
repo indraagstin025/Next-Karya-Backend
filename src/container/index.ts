@@ -25,6 +25,9 @@ import { createRateLimiterFactory } from "../middlewares/rateLimiter";
 import { createErrorHandler } from "../middlewares/errorHandler";
 import { createSecurityMiddleware } from "../middlewares/security";
 
+/**
+ * Optional dependency overrides accepted by `createAppContainer` for isolated testing.
+ */
 export interface ContainerOverrides {
   env?: EnvConfig;
   prisma?: PrismaClient;
@@ -34,8 +37,10 @@ export interface ContainerOverrides {
   webhook?: IWebhookNotifier;
 }
 
+/**
+ * Composition root container holding wired infrastructure, services, controllers, and middlewares.
+ */
 export interface AppContainer {
-  // Core dependencies
   env: EnvConfig;
   prisma: PrismaClient;
   cache: ICacheService;
@@ -43,7 +48,6 @@ export interface AppContainer {
   tenantGuard: ITenantGuard;
   webhook: IWebhookNotifier;
 
-  // Services
   services: {
     auth: AuthService;
     analytics: AnalyticsService;
@@ -54,7 +58,6 @@ export interface AppContainer {
     public: PublicService;
   };
 
-  // Controllers
   controllers: {
     auth: AuthController;
     analytics: AnalyticsController;
@@ -65,7 +68,6 @@ export interface AppContainer {
     public: PublicController;
   };
 
-  // Middlewares
   middlewares: {
     requireAuth: ReturnType<typeof createAuthMiddleware>;
     rateLimiter: ReturnType<typeof createRateLimiterFactory>;
@@ -75,8 +77,8 @@ export interface AppContainer {
 }
 
 /**
- * Factory function that builds the Dependency Injection Composition Root.
- * Supports dependency overrides for unit and integration testing.
+ * Builds the Dependency Injection composition root and wires all domain services,
+ * HTTP controllers, and security middlewares with optional test overrides.
  */
 export function createAppContainer(overrides: ContainerOverrides = {}): AppContainer {
   const env = overrides.env ?? defaultEnv;
@@ -96,7 +98,6 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
     tenantGuard,
   };
 
-  // Wire Services via Constructor DI
   const authService = new AuthService(sharedDeps);
   const analyticsService = new AnalyticsService(sharedDeps);
   const cmsService = new CmsService(sharedDeps);
@@ -105,7 +106,6 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
   const mediaService = new MediaService(sharedDeps);
   const publicService = new PublicService(sharedDeps);
 
-  // Wire Controllers via Constructor DI
   const authController = new AuthController(authService);
   const analyticsController = new AnalyticsController(analyticsService, tenantGuard);
   const cmsController = new CmsController(cmsService, tenantGuard);
@@ -114,7 +114,6 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
   const mediaController = new MediaController(mediaService, tenantGuard);
   const publicController = new PublicController(publicService, tenantGuard);
 
-  // Wire Middlewares via Factory DI
   const requireAuth = createAuthMiddleware({ prisma, cache, env, logger });
   const rateLimiter = createRateLimiterFactory({ cache, env });
   const security = createSecurityMiddleware(logger);
