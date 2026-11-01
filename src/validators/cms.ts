@@ -24,7 +24,7 @@ const safeUrlOrPathField = z
       .refine(
         (val) =>
           val === "" ||
-          /^\/[a-zA-Z0-9/_.-]+$/.test(val) ||
+          (/^\/[a-zA-Z0-9/_.-]+$/.test(val) && !val.includes("..")) ||
           /^https?:\/\/[^\s"'<>]+$/i.test(val),
         "URL atau path aset harus diawali / atau http(s):// yang aman"
       ),
@@ -41,9 +41,26 @@ const safeHrefField = z
   .refine(
     (val) =>
       val.startsWith("#") ||
-      (val.startsWith("/") && !val.startsWith("//")) ||
+      (val.startsWith("/") && !val.startsWith("//") && !val.includes("..")) ||
       /^https?:\/\/[^\s"'<>]+$/i.test(val),
     "Tautan CTA harus berupa anchor (#), path internal (/), atau URL http(s) yang aman"
+  );
+
+const safeJsonContentField = z
+  .unknown()
+  .refine(
+    (val) => {
+      if (val === undefined || val === null) return true;
+      try {
+        const serialized = JSON.stringify(val);
+        if (serialized.length > 500_000) return false;
+        const lower = serialized.toLowerCase();
+        return !lower.includes("<script") && !lower.includes("javascript:");
+      } catch {
+        return false;
+      }
+    },
+    "Konten terstruktur melebihi batas ukuran aman (500 KB) atau mengandung skrip terlarang"
   );
 
 // Categories
@@ -64,7 +81,7 @@ export const createPostSchema = z
     title: z.string().trim().min(3, "Judul minimal 3 karakter").max(255),
     slug: slugField,
     excerpt: z.string().trim().min(10, "Ringkasan minimal 10 karakter").max(1000),
-    content: z.any().default([]),
+    content: safeJsonContentField.default([]),
     coverUrl: safeUrlOrPathField,
     coverAlt: z.string().trim().max(255).optional().nullable(),
     categoryId: z.string().trim().min(1, "Kategori wajib dipilih").max(64),
@@ -94,7 +111,7 @@ export const createPortfolioSchema = z
     summary: z.string().trim().min(10, "Ringkasan minimal 10 karakter").max(1000),
     impactSummary: z.string().trim().max(1000).optional().nullable(),
     metricResult: z.string().trim().max(100).optional().nullable(),
-    content: z.any().default({ description: "" }),
+    content: safeJsonContentField.default({ description: "" }),
     technologies: z.array(z.string().trim().min(1).max(60)).max(25).default([]),
     thumbnailUrl: safeUrlOrPathField,
     thumbnailAlt: z.string().trim().max(255).optional().nullable(),
@@ -142,7 +159,7 @@ export const createPageSchema = z
     site_id: siteIdField,
     title: z.string().trim().min(3, "Judul halaman minimal 3 karakter").max(255),
     slug: slugField,
-    content: z.any().default([]),
+    content: safeJsonContentField.default([]),
     seoTitle: z.string().trim().max(255).optional().nullable(),
     seoDescription: z.string().trim().max(500).optional().nullable(),
   })
@@ -214,12 +231,13 @@ export const createRedirectSchema = z
       .max(255)
       .refine(
         (val) =>
-          (val.startsWith("/") && !val.startsWith("//")) ||
+          (val.startsWith("/") && !val.startsWith("//") && !val.includes("..")) ||
           /^https?:\/\/[^\s"'<>]+$/i.test(val),
         "Path tujuan harus diawali / atau URL http(s) yang valid"
       ),
     statusCode: z.union([z.literal(301), z.literal(302), z.literal(307), z.literal(308)]).default(301),
   })
+  .strict()
   .refine((data) => data.sourcePath !== data.targetPath, {
     message: "Path asal dan path tujuan tidak boleh sama",
     path: ["targetPath"],
@@ -230,4 +248,4 @@ export const mutationLockBodySchema = z
     site_id: siteIdField.optional(),
     updatedAt: z.string().trim().min(1).optional(),
   })
-  .passthrough();
+  .strict();
