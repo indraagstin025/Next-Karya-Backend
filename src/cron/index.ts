@@ -1,14 +1,23 @@
 import cron from "node-cron";
-import { prisma } from "../config/prisma";
+import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../config/prisma";
+import { ILogger, logger as defaultLogger } from "../core/logger";
 
-export function initCronJobs() {
-  console.log("[Cron] Initializing background workers...");
+export interface CronDeps {
+  prisma: PrismaClient;
+  logger: ILogger;
+}
+
+export function initCronJobs(deps: Partial<CronDeps> = {}) {
+  const prisma = deps.prisma ?? defaultPrisma;
+  const logger = deps.logger ?? defaultLogger;
+
+  logger.info("[Cron] Initializing background workers...");
 
   // 1. Hourly Rollup (Runs at minute 0 every hour: "0 * * * *")
   cron.schedule("0 * * * *", async () => {
-    console.log("[Cron] Starting hourly analytics rollup...");
+    logger.info("[Cron] Starting hourly analytics rollup...");
     try {
-      // Execute CTE rollup query from raw analytics_events into analytics_daily
       await prisma.$executeRaw`
         WITH session_summary AS (
           SELECT 
@@ -43,25 +52,25 @@ export function initCronJobs() {
           form_submits = EXCLUDED.form_submits,
           updated_at = NOW();
       `;
-      console.log("[Cron] Hourly analytics rollup completed successfully.");
+      logger.info("[Cron] Hourly analytics rollup completed successfully.");
     } catch (err: any) {
-      console.error("[Cron Error] Analytics rollup failed:", err.message);
+      logger.error("[Cron Error] Analytics rollup failed", { error: err?.message });
     }
   });
 
   // 2. Daily Purge at 02:00 WIB / 19:00 UTC (Runs every day: "0 19 * * *")
   cron.schedule("0 19 * * *", async () => {
-    console.log("[Cron] Starting 90-day analytics event purge...");
+    logger.info("[Cron] Starting 90-day analytics event purge...");
     try {
       const deletedCount = await prisma.$executeRaw`
         DELETE FROM analytics_events 
         WHERE occurred_at < NOW() - INTERVAL '90 days';
       `;
-      console.log(`[Cron] Purged ${deletedCount} raw events older than 90 days.`);
+      logger.info(`[Cron] Purged ${deletedCount} raw events older than 90 days.`);
     } catch (err: any) {
-      console.error("[Cron Error] Event purge failed:", err.message);
+      logger.error("[Cron Error] Event purge failed", { error: err?.message });
     }
   });
 
-  console.log("[Cron] Workers registered successfully.");
+  logger.info("[Cron] Workers registered successfully.");
 }
