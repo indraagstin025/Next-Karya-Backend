@@ -3,6 +3,11 @@ import { AppError } from "../core/AppError";
 import { defaultLogger, ILogger } from "../core/logger";
 import { sendError } from "../utils/response";
 
+/**
+ * Creates the terminal Express error-handling middleware that logs exceptions with
+ * `requestId` correlation and maps operational `AppError`, Multer, and Prisma error codes
+ * (`P2002`, `P2025`, `P2003`) to safe HTTP responses without leaking internal stack traces.
+ */
 export function createErrorHandler(logger: ILogger = defaultLogger) {
   return function errorHandlerMiddleware(
     err: any,
@@ -52,7 +57,7 @@ export function createErrorHandler(logger: ILogger = defaultLogger) {
       );
     }
 
-    // Prisma unique constraint violation (e.g. duplicate [site_id, slug])
+    // Prisma unique constraint violation (for example duplicate [site_id, slug])
     if (err?.code === "P2002") {
       return sendError(
         res,
