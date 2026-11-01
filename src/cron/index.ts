@@ -3,18 +3,24 @@ import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../config/prisma";
 import { ILogger, logger as defaultLogger } from "../core/logger";
 
+/**
+ * Dependencies required by scheduled background workers.
+ */
 export interface CronDeps {
   prisma: PrismaClient;
   logger: ILogger;
 }
 
+/**
+ * Registers background cron schedules for hourly `analytics_daily` rollups
+ * and daily 90-day raw `analytics_events` retention cleanup.
+ */
 export function initCronJobs(deps: Partial<CronDeps> = {}) {
   const prisma = deps.prisma ?? defaultPrisma;
   const logger = deps.logger ?? defaultLogger;
 
   logger.info("[Cron] Initializing background workers...");
 
-  // 1. Hourly Rollup (Runs at minute 0 every hour: "0 * * * *")
   cron.schedule("0 * * * *", async () => {
     logger.info("[Cron] Starting hourly analytics rollup...");
     try {
@@ -58,7 +64,6 @@ export function initCronJobs(deps: Partial<CronDeps> = {}) {
     }
   });
 
-  // 2. Daily Purge at 02:00 WIB / 19:00 UTC (Runs every day: "0 19 * * *")
   cron.schedule("0 19 * * *", async () => {
     logger.info("[Cron] Starting 90-day analytics event purge...");
     try {
