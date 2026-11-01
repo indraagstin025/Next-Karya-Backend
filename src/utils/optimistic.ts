@@ -4,6 +4,11 @@ import { AppError } from "../core/AppError";
 import { ITenantGuard } from "../container/types";
 import { sendError } from "./response";
 
+/**
+ * Verifies that the client's `updatedAt` timestamp is within 1000ms of the database record's
+ * current `updatedAt` value to prevent silent lost updates when two staff members edit the same record.
+ * Sends an HTTP 400 or 409 response directly and returns `false` when the lock check fails.
+ */
 export function checkOptimisticLock(
   res: Response,
   requestUpdatedAt: string | Date | undefined,
@@ -33,7 +38,6 @@ export function checkOptimisticLock(
     return false;
   }
 
-  // Reject when client timestamp differs from database timestamp by more than 1000ms.
   if (Math.abs(reqTime - dbTime) > 1000) {
     sendError(
       res,
@@ -49,9 +53,17 @@ export function checkOptimisticLock(
   return true;
 }
 
+/**
+ * Enforces single-tenant isolation in Phase 1 by validating that any incoming `site_id`
+ * matches the configured `SITE_ID` and rejecting cross-tenant IDOR attempts with HTTP 403.
+ */
 export class TenantGuard implements ITenantGuard {
   constructor(private readonly allowedSiteId: string = env.SITE_ID) {}
 
+  /**
+   * Normalizes and validates an incoming `site_id` parameter, defaulting to the configured
+   * primary site when omitted and throwing `AppError` (400 or 403) on malformed or unauthorized IDs.
+   */
   resolveAuthorizedSiteId(rawSiteId?: unknown): string {
     if (rawSiteId === undefined || rawSiteId === null || rawSiteId === "") {
       return this.allowedSiteId;
@@ -76,8 +88,9 @@ export class TenantGuard implements ITenantGuard {
 
 export const defaultTenantGuard = new TenantGuard(env.SITE_ID);
 
-// Phase 1 locks tenant operations to the configured SITE_ID ("nextkarya-main")
-// and rejects cross-tenant IDOR attempts.
+/**
+ * Resolves and authorizes the `site_id` against the default `TenantGuard` instance.
+ */
 export function resolveAuthorizedSiteId(rawSiteId?: unknown): string {
   return defaultTenantGuard.resolveAuthorizedSiteId(rawSiteId);
 }
