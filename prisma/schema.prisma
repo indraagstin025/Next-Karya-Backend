@@ -1,0 +1,540 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// 1. DEFINISI ENUM BAKU
+// ==========================================
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum LeadStatus {
+  BARU
+  DIHUBUNGI
+  PROPOSAL
+  DEAL
+  BATAL
+}
+
+enum ProjectStatus {
+  PERSIAPAN
+  AKTIF
+  REVISI
+  SELESAI
+}
+
+enum UserRole {
+  STAFF
+}
+
+enum EmergencyActionType {
+  UNPUBLISH_CONTENT
+  LOCK_CONTACT_FORM
+  UNLOCK_CONTACT_FORM
+  SET_ALERT_BANNER
+  REMOVE_ALERT_BANNER
+  REASSIGN_STAFF
+  REVOKE_SESSION
+}
+
+enum ActivityActionType {
+  LEAD_STATUS_CHANGED
+  LEAD_DEAL_VALUE_UPDATED
+  LEAD_REASSIGNED
+  SCHEDULE_SHIFTED
+  CONTENT_STATUS_CHANGED
+}
+
+// ==========================================
+// 2. MULTI-TENANT MASTER & PENGGUNA
+// ==========================================
+
+model Site {
+  id            String    @id @db.VarChar(64)
+  name          String    @db.VarChar(255)
+  domain        String    @unique @db.VarChar(255)
+  isActive      Boolean   @default(true)
+  isFormLocked  Boolean   @default(false)
+  alertBanner   String?   @db.Text
+  isAlertActive Boolean   @default(false)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  categories         Category[]
+  posts              Post[]
+  portfolios         Portfolio[]
+  services           Service[]
+  faqs               Faq[]
+  testimonials       Testimonial[]
+  pages              Page[]
+  snapshots          ContentSnapshot[]
+  media              Media[]
+  redirects          Redirect[]
+  leads              Lead[]
+  interactionLogs    InteractionLog[]
+  activityLogs       ActivityLog[]
+  projectSchedules   ProjectSchedule[]
+  analyticsEvents    AnalyticsEvent[]
+  analyticsDaily     AnalyticsDaily[]
+  rateLimits         RateLimit[]
+  emergencyAuditLogs EmergencyAuditLog[]
+
+  @@map("sites")
+}
+
+model User {
+  id           String    @id @default(cuid()) @db.VarChar(64)
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @db.VarChar(255)
+  fullName     String    @db.VarChar(255)
+  role         UserRole  @default(STAFF)
+  jobTitle     String    @db.VarChar(100)
+  avatarUrl    String?   @db.VarChar(500)
+  isActive     Boolean   @default(true)
+  tokenVersion Int       @default(0)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  authoredPosts      Post[]              @relation("PostAuthor")
+  editedPosts        Post[]              @relation("PostLastEditor")
+  editedPortfolios   Portfolio[]         @relation("PortfolioLastEditor")
+  editedServices     Service[]           @relation("ServiceLastEditor")
+  editedFaqs         Faq[]               @relation("FaqLastEditor")
+  editedTestimonials Testimonial[]       @relation("TestimonialLastEditor")
+  editedPages        Page[]              @relation("PageLastEditor")
+  savedSnapshots     ContentSnapshot[]   @relation("SnapshotAuthor")
+  uploadedMedia      Media[]             @relation("MediaUploader")
+  assignedLeads      Lead[]              @relation("LeadAssignee")
+  editedLeads        Lead[]              @relation("LeadLastEditor")
+  interactionLogs    InteractionLog[]    @relation("LogAuthor")
+  activityLogs       ActivityLog[]       @relation("ActivityActor")
+  assignedSchedules  ProjectSchedule[]   @relation("ScheduleAssignee")
+  editedSchedules    ProjectSchedule[]   @relation("ScheduleLastEditor")
+  emergencyActions   EmergencyAuditLog[] @relation("EmergencyActor")
+
+  @@index([role, isActive])
+  @@map("users")
+}
+
+// ==========================================
+// 3. CMS & PORTOFOLIO
+// ==========================================
+
+model Category {
+  id        String   @id @default(cuid()) @db.VarChar(64)
+  site_id   String   @default("nextkarya-main") @db.VarChar(64)
+  name      String   @db.VarChar(100)
+  slug      String   @db.VarChar(150)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  site  Site   @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  posts Post[]
+
+  @@unique([site_id, slug])
+  @@index([site_id])
+  @@map("categories")
+}
+
+model Post {
+  id                 String        @id @default(cuid()) @db.VarChar(64)
+  site_id            String        @default("nextkarya-main") @db.VarChar(64)
+  title              String        @db.VarChar(255)
+  slug               String        @db.VarChar(255)
+  excerpt            String        @db.Text
+  content            Json          @db.JsonB
+  coverUrl           String?       @db.VarChar(500)
+  coverAlt           String?       @db.VarChar(255)
+  tags               String[]      @default([])
+  readingTimeMinutes Int           @default(1)
+  relatedPostIds     String[]      @default([])
+  status             ContentStatus @default(DRAFT)
+  categoryId         String        @db.VarChar(64)
+  authorId           String        @db.VarChar(64)
+  lastEditedById     String        @db.VarChar(64)
+  seoTitle           String?       @db.VarChar(255)
+  seoDescription     String?       @db.Text
+  publishedAt        DateTime?     @db.Timestamptz(3)
+  createdAt          DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(3)
+
+  site       Site     @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  author     User     @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  lastEditor User     @relation("PostLastEditor", fields: [lastEditedById], references: [id], onDelete: Restrict)
+
+  @@unique([site_id, slug])
+  @@index([site_id, status, publishedAt])
+  @@index([site_id, categoryId, status])
+  @@index([site_id, updatedAt])
+  @@map("posts")
+}
+
+model Portfolio {
+  id              String        @id @default(cuid()) @db.VarChar(64)
+  site_id         String        @default("nextkarya-main") @db.VarChar(64)
+  title           String        @db.VarChar(255)
+  slug            String        @db.VarChar(255)
+  clientName      String        @db.VarChar(255)
+  serviceCategory String        @db.VarChar(100)
+  summary         String        @db.Text
+  impactSummary   String?       @db.Text
+  metricResult    String?       @db.VarChar(100)
+  content         Json          @db.JsonB
+  thumbnailUrl    String?       @db.VarChar(500)
+  thumbnailAlt    String?       @db.VarChar(255)
+  technologies    String[]      @default([])
+  projectUrl      String?       @db.VarChar(500)
+  isFeatured      Boolean       @default(false)
+  sortOrder       Int           @default(0)
+  status          ContentStatus @default(DRAFT)
+  lastEditedById  String        @db.VarChar(64)
+  publishedAt     DateTime?     @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+
+  site         Site          @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  lastEditor   User          @relation("PortfolioLastEditor", fields: [lastEditedById], references: [id], onDelete: Restrict)
+  testimonials Testimonial[]
+
+  @@unique([site_id, slug])
+  @@index([site_id, status, isFeatured, sortOrder])
+  @@map("portfolios")
+}
+
+model Service {
+  id             String        @id @default(cuid()) @db.VarChar(64)
+  site_id        String        @default("nextkarya-main") @db.VarChar(64)
+  title          String        @db.VarChar(255)
+  slug           String        @db.VarChar(255)
+  icon           String        @db.VarChar(100)
+  shortDesc      String        @db.Text
+  features       String[]      @default([])
+  priceLabel     String        @db.VarChar(100)
+  priceNote      String?       @db.VarChar(255)
+  badge          String?       @db.VarChar(100)
+  ctaLabel       String        @default("Konsultasi Sekarang") @db.VarChar(100)
+  ctaHref        String        @default("/kontak") @db.VarChar(255)
+  sortOrder      Int           @default(0)
+  status         ContentStatus @default(DRAFT)
+  lastEditedById String        @db.VarChar(64)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  site       Site @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  lastEditor User @relation("ServiceLastEditor", fields: [lastEditedById], references: [id], onDelete: Restrict)
+
+  @@unique([site_id, slug])
+  @@index([site_id, status, sortOrder])
+  @@map("services")
+}
+
+model Faq {
+  id             String   @id @default(cuid()) @db.VarChar(64)
+  site_id        String   @default("nextkarya-main") @db.VarChar(64)
+  question       String   @db.VarChar(500)
+  answer         String   @db.Text
+  category       String   @default("Umum") @db.VarChar(100)
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  lastEditedById String   @db.VarChar(64)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  site       Site @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  lastEditor User @relation("FaqLastEditor", fields: [lastEditedById], references: [id], onDelete: Restrict)
+
+  @@index([site_id, isActive, sortOrder])
+  @@index([site_id, category])
+  @@map("faqs")
+}
+
+model Testimonial {
+  id             String        @id @default(cuid()) @db.VarChar(64)
+  site_id        String        @default("nextkarya-main") @db.VarChar(64)
+  clientName     String        @db.VarChar(255)
+  clientRole     String?       @db.VarChar(150)
+  companyName    String?       @db.VarChar(255)
+  content        String        @db.Text
+  avatarUrl      String?       @db.VarChar(500)
+  rating         Int           @default(5)
+  portfolioId    String?       @db.VarChar(64)
+  sortOrder      Int           @default(0)
+  status         ContentStatus @default(PUBLISHED)
+  lastEditedById String        @db.VarChar(64)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  site       Site       @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  portfolio  Portfolio? @relation(fields: [portfolioId], references: [id], onDelete: SetNull)
+  lastEditor User       @relation("TestimonialLastEditor", fields: [lastEditedById], references: [id], onDelete: Restrict)
+
+  @@index([site_id, status, sortOrder])
+  @@map("testimonials")
+}
+
+model Page {
+  id             String        @id @default(cuid()) @db.VarChar(64)
+  site_id        String        @default("nextkarya-main") @db.VarChar(64)
+  title          String        @db.VarChar(255)
+  slug           String        @db.VarChar(255)
+  content        Json          @db.JsonB
+  seoTitle       String?       @db.VarChar(255)
+  seoDescription String?       @db.Text
+  status         ContentStatus @default(DRAFT)
+  lastEditedById String        @db.VarChar(64)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  site       Site @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  lastEditor User @relation("PageLastEditor", fields: [lastEditedById], references: [id], onDelete: Restrict)
+
+  @@unique([site_id, slug])
+  @@index([site_id, status])
+  @@map("pages")
+}
+
+model ContentSnapshot {
+  id              String   @id @default(cuid()) @db.VarChar(64)
+  site_id         String   @default("nextkarya-main") @db.VarChar(64)
+  entityType      String   @db.VarChar(50)
+  entityId        String   @db.VarChar(64)
+  version         Int      @default(1)
+  title           String   @db.VarChar(255)
+  snapshotPayload Json     @db.JsonB
+  savedById       String   @db.VarChar(64)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  site   Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+  author User @relation("SnapshotAuthor", fields: [savedById], references: [id], onDelete: Restrict)
+
+  @@index([site_id, entityType, entityId, createdAt, version])
+  @@map("content_snapshots")
+}
+
+model Media {
+  id           String   @id @default(cuid()) @db.VarChar(64)
+  site_id      String   @default("nextkarya-main") @db.VarChar(64)
+  fileName     String   @db.VarChar(255)
+  originalName String   @db.VarChar(255)
+  mimeType     String   @db.VarChar(100)
+  fileSize     Int
+  width        Int?
+  height       Int?
+  url          String   @db.VarChar(500)
+  altText      String?  @db.VarChar(255)
+  uploadedById String   @db.VarChar(64)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  site       Site @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  uploadedBy User @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([site_id, createdAt])
+  @@index([site_id, mimeType, createdAt])
+  @@index([site_id, originalName])
+  @@map("media")
+}
+
+model Redirect {
+  id         String   @id @default(cuid()) @db.VarChar(64)
+  site_id    String   @default("nextkarya-main") @db.VarChar(64)
+  sourcePath String   @db.VarChar(255)
+  targetPath String   @db.VarChar(255)
+  statusCode Int      @default(301)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  site Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+
+  @@unique([site_id, sourcePath])
+  @@map("redirects")
+}
+
+// ==========================================
+// 4. CRM & BEBAN KERJA TIM
+// ==========================================
+
+model Lead {
+  id                 String     @id @default(cuid()) @db.VarChar(64)
+  site_id            String     @default("nextkarya-main") @db.VarChar(64)
+  clientName         String     @db.VarChar(255)
+  companyName        String?    @db.VarChar(255)
+  whatsappNumber     String     @db.VarChar(50)
+  email              String?    @db.VarChar(255)
+  serviceRequested   String     @db.VarChar(100)
+  message            String     @db.Text
+  dealValue          BigInt     @default(0)
+  status             LeadStatus @default(BARU)
+  assignedToId       String?    @db.VarChar(64)
+  nextFollowUpDate   DateTime?  @db.Date
+  warrantyExpiryDate DateTime?  @db.Date
+  stagingUrl         String?    @db.VarChar(500)
+  productionUrl      String?    @db.VarChar(500)
+  lastEditedById     String?    @db.VarChar(64)
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+
+  site            Site              @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  assignedTo      User?             @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  lastEditor      User?             @relation("LeadLastEditor", fields: [lastEditedById], references: [id], onDelete: SetNull)
+  interactionLogs InteractionLog[]
+  schedules       ProjectSchedule[]
+
+  @@index([site_id, nextFollowUpDate, status, assignedToId])
+  @@index([site_id, status, createdAt])
+  @@index([site_id, warrantyExpiryDate])
+  @@map("leads")
+}
+
+model InteractionLog {
+  id        String   @id @default(cuid()) @db.VarChar(64)
+  site_id   String   @default("nextkarya-main") @db.VarChar(64)
+  leadId    String   @db.VarChar(64)
+  authorId  String   @db.VarChar(64)
+  note      String   @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  site   Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author User @relation("LogAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([site_id, leadId, createdAt])
+  @@map("interaction_logs")
+}
+
+model ActivityLog {
+  id         String             @id @default(cuid()) @db.VarChar(64)
+  site_id    String             @default("nextkarya-main") @db.VarChar(64)
+  actorId    String             @db.VarChar(64)
+  action     ActivityActionType
+  entityType String             @db.VarChar(50)
+  entityId   String             @db.VarChar(64)
+  summary    String             @db.VarChar(500)
+  metadata   Json?              @db.JsonB
+  createdAt  DateTime           @default(now()) @db.Timestamptz(3)
+
+  site  Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+  actor User @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([site_id, entityType, entityId, createdAt])
+  @@index([site_id, action, createdAt])
+  @@map("activity_logs")
+}
+
+model ProjectSchedule {
+  id             String        @id @default(cuid()) @db.VarChar(64)
+  site_id        String        @default("nextkarya-main") @db.VarChar(64)
+  leadId         String?       @db.VarChar(64)
+  taskName       String        @db.VarChar(255)
+  assignedToId   String        @db.VarChar(64)
+  startDate      DateTime      @db.Date
+  endDate        DateTime      @db.Date
+  status         ProjectStatus @default(AKTIF)
+  lastEditedById String        @db.VarChar(64)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  site       Site  @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  lead       Lead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedTo User  @relation("ScheduleAssignee", fields: [assignedToId], references: [id], onDelete: Restrict)
+  lastEditor User  @relation("ScheduleLastEditor", fields: [lastEditedById], references: [id], onDelete: Restrict)
+
+  @@index([site_id, assignedToId, startDate, endDate])
+  @@map("project_schedules")
+}
+
+// ==========================================
+// 5. ANALITIK & RATE LIMIT
+// ==========================================
+
+model AnalyticsEvent {
+  id            BigInt   @id @default(autoincrement())
+  site_id       String   @default("nextkarya-main") @db.VarChar(64)
+  sessionId     String   @db.VarChar(64)
+  eventName     String   @db.VarChar(50)
+  path          String   @db.VarChar(255)
+  referrer      String?  @db.VarChar(500)
+  source        String   @default("direct") @db.VarChar(50)
+  device        String   @default("unknown") @db.VarChar(20)
+  browser       String?  @db.VarChar(50)
+  os            String?  @db.VarChar(50)
+  durationSec   Int      @default(0)
+  visitorIdHash String   @db.VarChar(64)
+  occurredAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  site Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+
+  @@index([site_id, occurredAt])
+  @@index([site_id, sessionId, occurredAt])
+  @@index([site_id, eventName, occurredAt])
+  @@index([site_id, visitorIdHash, occurredAt])
+  @@index([site_id, os, browser, occurredAt])
+  @@map("analytics_events")
+}
+
+model AnalyticsDaily {
+  id             BigInt   @id @default(autoincrement())
+  site_id        String   @default("nextkarya-main") @db.VarChar(64)
+  date           DateTime @db.Date
+  path           String   @db.VarChar(255)
+  source         String   @default("direct") @db.VarChar(50)
+  device         String   @default("unknown") @db.VarChar(20)
+  pageviews      Int      @default(0)
+  visitors       Int      @default(0)
+  sessions       Int      @default(0)
+  bounces        Int      @default(0)
+  durationSec    Int      @default(0)
+  whatsappClicks Int      @default(0)
+  formSubmits    Int      @default(0)
+  conversions    Int      @default(0)
+
+  site Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+
+  @@unique([site_id, date, path, source, device])
+  @@index([site_id, date])
+  @@map("analytics_daily")
+}
+
+model RateLimit {
+  key       String   @id @db.VarChar(255)
+  site_id   String   @default("nextkarya-main") @db.VarChar(64)
+  count     Int      @default(1)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  site Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+
+  @@index([site_id, expiresAt])
+  @@map("rate_limits")
+}
+
+// ==========================================
+// 6. LOG AUDIT AKSI DARURAT
+// ==========================================
+
+model EmergencyAuditLog {
+  id             String              @id @default(cuid()) @db.VarChar(64)
+  site_id        String              @default("nextkarya-main") @db.VarChar(64)
+  actorId        String              @db.VarChar(64)
+  actionType     EmergencyActionType
+  targetEntity   String              @db.VarChar(50)
+  targetId       String?             @db.VarChar(64)
+  reason         String              @db.Text
+  previousState  Json?               @db.JsonB
+  isRolledBack   Boolean             @default(false)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+
+  site  Site @relation(fields: [site_id], references: [id], onDelete: Restrict)
+  actor User @relation("EmergencyActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([site_id, actionType, createdAt])
+  @@index([site_id, targetEntity, targetId])
+  @@map("emergency_audit_logs")
+}
