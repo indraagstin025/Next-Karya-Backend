@@ -1,12 +1,14 @@
 import { Response } from "express";
 import { env } from "../config/env";
+import { AppError } from "../core/AppError";
+import { ITenantGuard } from "../container/types";
 import { sendError } from "./response";
 
 export function checkOptimisticLock(
   res: Response,
   requestUpdatedAt: string | Date | undefined,
   dbUpdatedAt: Date,
-  currentEntityData: any
+  currentEntityData: unknown
 ): boolean {
   if (!requestUpdatedAt) {
     sendError(
@@ -47,33 +49,35 @@ export function checkOptimisticLock(
   return true;
 }
 
+export class TenantGuard implements ITenantGuard {
+  constructor(private readonly allowedSiteId: string = env.SITE_ID) {}
+
+  resolveAuthorizedSiteId(rawSiteId?: unknown): string {
+    if (rawSiteId === undefined || rawSiteId === null || rawSiteId === "") {
+      return this.allowedSiteId;
+    }
+    const candidate = Array.isArray(rawSiteId) ? rawSiteId[rawSiteId.length - 1] : rawSiteId;
+    if (typeof candidate !== "string") {
+      throw AppError.badRequest("INVALID_SITE_ID", "Parameter site_id tidak valid.");
+    }
+    const normalized = candidate.trim();
+    if (!/^[a-z0-9-]{3,64}$/.test(normalized)) {
+      throw AppError.badRequest("INVALID_SITE_ID", "Format site_id tidak valid.");
+    }
+    if (normalized !== this.allowedSiteId) {
+      throw AppError.forbidden(
+        "TENANT_ACCESS_DENIED",
+        "Akses lintas site_id ditolak pada lingkup Fase 1."
+      );
+    }
+    return normalized;
+  }
+}
+
+export const defaultTenantGuard = new TenantGuard(env.SITE_ID);
+
 // Phase 1 locks tenant operations to the configured SITE_ID ("nextkarya-main")
 // and rejects cross-tenant IDOR attempts.
 export function resolveAuthorizedSiteId(rawSiteId?: unknown): string {
-  if (rawSiteId === undefined || rawSiteId === null || rawSiteId === "") {
-    return env.SITE_ID;
-  }
-  if (typeof rawSiteId !== "string") {
-    throw {
-      statusCode: 400,
-      code: "INVALID_SITE_ID",
-      message: "Parameter site_id tidak valid.",
-    };
-  }
-  const normalized = rawSiteId.trim();
-  if (!/^[a-z0-9-]{3,64}$/.test(normalized)) {
-    throw {
-      statusCode: 400,
-      code: "INVALID_SITE_ID",
-      message: "Format site_id tidak valid.",
-    };
-  }
-  if (normalized !== env.SITE_ID) {
-    throw {
-      statusCode: 403,
-      code: "TENANT_ACCESS_DENIED",
-      message: "Akses lintas site_id ditolak pada lingkup Fase 1.",
-    };
-  }
-  return normalized;
+  return defaultTenantGuard.resolveAuthorizedSiteId(rawSiteId);
 }
