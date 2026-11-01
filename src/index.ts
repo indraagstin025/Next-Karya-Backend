@@ -7,6 +7,11 @@ import { createV1Router } from "./routes/v1";
 import { notFoundHandler } from "./middlewares/notFoundHandler";
 import { initCronJobs } from "./cron";
 
+/**
+ * Creates and configures the Express application with hardened Helmet headers,
+ * strict origin allowlisting, bounded payload parsers, HPP/prototype-pollution guards,
+ * sandboxed static file serving, and global fallback rate limiting.
+ */
 export function createApp(container: AppContainer = appContainer): Express {
   const app = express();
   const { env } = container;
@@ -14,7 +19,6 @@ export function createApp(container: AppContainer = appContainer): Express {
 
   app.disable("x-powered-by");
 
-  // 1. Security Headers (Helmet hardened)
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -33,7 +37,6 @@ export function createApp(container: AppContainer = appContainer): Express {
     })
   );
 
-  // 2. Strict CORS Origin Validation
   const allowedOrigins = new Set([
     env.FRONTEND_URL,
     "https://nextkarya.web.id",
@@ -54,14 +57,11 @@ export function createApp(container: AppContainer = appContainer): Express {
     })
   );
 
-  // 3. Body Parsing (bounded to 1MB to prevent memory exhaustion)
   app.use(express.json({ limit: "1mb", strict: true }));
   app.use(express.urlencoded({ extended: false, limit: "256kb", parameterLimit: 100 }));
 
-  // 4. Request Correlation, HPP Flattening, Prototype Pollution & Null-Byte Guard
   app.use(security);
 
-  // 5. Static uploads directory with strict nosniff & script-blocking headers
   const uploadsDir = path.join(process.cwd(), env.UPLOAD_DIR);
   app.use(
     "/uploads",
@@ -76,14 +76,12 @@ export function createApp(container: AppContainer = appContainer): Express {
     })
   );
 
-  // 6. Global Fallback Rate Limiter (300 req/min per IP)
   const globalApiLimiter = rateLimiter({
     windowSec: 60,
     maxRequests: 300,
     prefix: "rl_global_api",
   });
 
-  // Root info
   app.get("/", (_req, res) => {
     res.json({
       service: "Next Karya Digital Solutions REST API",
@@ -92,10 +90,8 @@ export function createApp(container: AppContainer = appContainer): Express {
     });
   });
 
-  // 7. Mount V1 API Router injected with Container
   app.use("/api/v1", globalApiLimiter, createV1Router(container));
 
-  // 8. 404 & Global Error Handling
   app.use(notFoundHandler);
   app.use(errorHandler);
 
@@ -112,6 +108,9 @@ if (require.main === module) {
     initCronJobs({ prisma, logger });
   });
 
+  /**
+   * Drains active HTTP connections and cleanly disconnects Prisma upon process termination signals.
+   */
   async function gracefulShutdown(signal: string) {
     logger.info(`[Server] Received ${signal}. Starting graceful shutdown...`);
     server.close(async () => {
