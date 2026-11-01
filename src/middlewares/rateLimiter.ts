@@ -10,6 +10,11 @@ export interface RateLimiterOptions {
   prefix?: string;
 }
 
+/**
+ * Creates a configurable fixed-window IP rate limiter factory backed by `ICacheService`.
+ * Emits `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `Retry-After` headers,
+ * and bypasses loopback requests in `development` mode to prevent local dev lockouts.
+ */
 export function createRateLimiterFactory(
   deps: { cache: ICacheService; env: EnvConfig } = {
     cache: defaultCache,
@@ -33,7 +38,6 @@ export function createRateLimiterFactory(
 
         const key = `${prefix}:${ip}`;
 
-        // In local development, bypass rate limiting for localhost to prevent dev loop lockouts
         if (
           deps.env.NODE_ENV === "development" &&
           (ip === "127.0.0.1" || ip === "::1" || ip.includes("127.0.0.1"))
@@ -59,7 +63,7 @@ export function createRateLimiterFactory(
 
         return next();
       } catch {
-        // In case of any rate limit check error, gracefully allow the request
+        // Allow request through if cache backend experiences a transient failure.
         return next();
       }
     };
