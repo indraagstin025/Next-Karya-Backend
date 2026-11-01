@@ -20,12 +20,15 @@ import {
   mutationLockBodySchema,
 } from "../../validators/cms";
 
+/**
+ * Creates the authenticated CMS router for managing categories, posts, portfolios,
+ * services, pages, FAQs, testimonials, redirects, and revision snapshots.
+ */
 export function createCmsRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { cms: cmsController } = container.controllers;
   const { requireAuth } = container.middlewares;
 
-  // --- CATEGORIES ---
   router.get("/categories", requireAuth, cmsController.getCategories);
   router.post(
     "/categories",
@@ -47,7 +50,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
     cmsController.deleteCategory
   );
 
-  // --- POSTS ---
   router.get("/posts", requireAuth, cmsController.getPosts);
   router.get("/posts/:id", requireAuth, validateParams(idParamSchema), cmsController.getPostById);
   router.post("/posts", requireAuth, validateBody(createPostSchema), cmsController.createPost);
@@ -73,7 +75,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
     cmsController.archivePost
   );
 
-  // --- PORTFOLIOS ---
   router.get("/portfolios", requireAuth, cmsController.getPortfolios);
   router.get(
     "/portfolios/:id",
@@ -109,7 +110,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
     cmsController.archivePortfolio
   );
 
-  // --- SERVICES ---
   router.get("/services", requireAuth, cmsController.getServices);
   router.get(
     "/services/:id",
@@ -145,7 +145,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
     cmsController.archiveService
   );
 
-  // --- PAGES ---
   router.get("/pages", requireAuth, cmsController.getPages);
   router.get("/pages/:id", requireAuth, validateParams(idParamSchema), cmsController.getPageById);
   router.post("/pages", requireAuth, validateBody(createPageSchema), cmsController.createPage);
@@ -171,7 +170,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
     cmsController.archivePage
   );
 
-  // --- FAQS ---
   router.get("/faqs", requireAuth, cmsController.getFaqs);
   router.get("/faqs/:id", requireAuth, validateParams(idParamSchema), cmsController.getFaqById);
   router.post("/faqs", requireAuth, validateBody(createFaqSchema), cmsController.createFaq);
@@ -184,7 +182,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
   );
   router.delete("/faqs/:id", requireAuth, validateParams(idParamSchema), cmsController.deleteFaq);
 
-  // --- TESTIMONIALS ---
   router.get("/testimonials", requireAuth, cmsController.getTestimonials);
   router.get(
     "/testimonials/:id",
@@ -213,7 +210,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
     cmsController.archiveTestimonial
   );
 
-  // --- REDIRECTS ---
   router.get("/redirects", requireAuth, cmsController.getRedirects);
   router.post(
     "/redirects",
@@ -228,7 +224,6 @@ export function createCmsRouter(container: AppContainer = appContainer): Router 
     cmsController.deleteRedirect
   );
 
-  // --- SNAPSHOTS ---
   router.get("/content-snapshots", requireAuth, cmsController.getSnapshots);
   router.post(
     "/content-snapshots/:id/restore",
