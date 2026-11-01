@@ -1,30 +1,53 @@
-import { prisma } from "../config/prisma";
+import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../config/prisma";
+import { ITenantGuard } from "../container/types";
+import { AppError } from "../core/AppError";
+import { defaultLogger, ILogger } from "../core/logger";
+import { defaultTenantGuard } from "../utils/optimistic";
 import { PaginationMeta } from "../utils/response";
 
+export interface CrmServiceDeps {
+  prisma: PrismaClient;
+  tenantGuard: ITenantGuard;
+  logger: ILogger;
+}
+
 export class CrmService {
+  constructor(
+    private readonly deps: CrmServiceDeps = {
+      prisma: defaultPrisma,
+      tenantGuard: defaultTenantGuard,
+      logger: defaultLogger,
+    }
+  ) {}
+
   async createLeadInternal(payload: any, recordedById: string) {
-    const lead = await prisma.lead.create({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
+
+    const lead = await this.deps.prisma.lead.create({
       data: {
-        site_id: payload.site_id,
+        site_id,
         clientName: payload.clientName,
-        companyName: payload.companyName,
+        companyName: payload.companyName ?? null,
         whatsappNumber: payload.whatsappNumber,
-        email: payload.email,
+        email: payload.email ?? null,
         serviceRequested: payload.serviceRequested,
         message: payload.message,
         dealValue: BigInt(payload.dealValue || 0),
         status: payload.status || "BARU",
         assignedToId: payload.assignedToId || null,
-        nextFollowUpDate: payload.nextFollowUpDate ? new Date(payload.nextFollowUpDate) : null,
+        nextFollowUpDate: payload.nextFollowUpDate
+          ? new Date(payload.nextFollowUpDate)
+          : null,
       },
       include: {
         assignedTo: { select: { id: true, fullName: true } },
       },
     });
 
-    await prisma.activityLog.create({
+    await this.deps.prisma.activityLog.create({
       data: {
-        site_id: payload.site_id,
+        site_id,
         actorId: recordedById,
         action: "LEAD_STATUS_CHANGED",
         entityType: "LEAD",
@@ -40,14 +63,15 @@ export class CrmService {
   }
 
   async getLeads(query: {
-    site_id: string;
+    site_id?: string;
     status?: "BARU" | "DIHUBUNGI" | "PROPOSAL" | "DEAL" | "BATAL";
     assignedToId?: string;
     page: number;
     limit: number;
     search?: string;
   }) {
-    const { site_id, status, assignedToId, page, limit, search } = query;
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(query.site_id);
+    const { status, assignedToId, page, limit, search } = query;
     const skip = (page - 1) * limit;
 
     const where: any = { site_id };
@@ -62,8 +86,8 @@ export class CrmService {
     }
 
     const [total, rawItems] = await Promise.all([
-      prisma.lead.count({ where }),
-      prisma.lead.findMany({
+      this.deps.prisma.lead.count({ where }),
+      this.deps.prisma.lead.findMany({
         where,
         skip,
         take: limit,
@@ -89,9 +113,11 @@ export class CrmService {
     return { items, meta };
   }
 
-  async getLeadById(id: string) {
-    const lead = await prisma.lead.findUnique({
-      where: { id },
+  async getLeadById(id: string, rawSiteId?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+
+    const lead = await this.deps.prisma.lead.findFirst({
+      where: { id, site_id },
       include: {
         assignedTo: { select: { id: true, fullName: true, email: true } },
         interactionLogs: {
@@ -108,9 +134,8 @@ export class CrmService {
 
     if (!lead) return null;
 
-    // Fetch activity logs for this lead
-    const activityLogs = await prisma.activityLog.findMany({
-      where: { entityType: "LEAD", entityId: id },
+    const activityLogs = await this.deps.prisma.activityLog.findMany({
+      where: { site_id, entityType: "LEAD", entityId: id },
       orderBy: { createdAt: "desc" },
       include: {
         actor: { select: { id: true, fullName: true } },
@@ -124,36 +149,55 @@ export class CrmService {
     };
   }
 
-  async updateLead(id: string, payload: any, editorId: string) {
-    const current = await prisma.lead.findUnique({ where: { id } });
-    if (!current) throw { statusCode: 404, code: "NOT_FOUND", message: "Data prospek tidak ditemukan." };
+  async updateLead(id: string, payload: any, editorId: string, rawSiteId?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(
+      payload?.site_id ?? rawSiteId
+    );
+    const current = await this.deps.prisma.lead.findFirst({
+      where: { id, site_id },
+    });
+    if (!current) {
+      throw AppError.notFound("Data prospek tidak ditemukan.");
+    }
 
-    const { updatedAt, nextFollowUpDate, dealValue, ...updateData } = payload;
-
-    const dataToUpdate: any = {
-      ...updateData,
+    // Explicit allowlist field mapping to prevent Mass Assignment
+    const dataToUpdate: Record<string, unknown> = {
       lastEditedById: editorId,
     };
 
-    if (dealValue !== undefined) {
-      dataToUpdate.dealValue = BigInt(dealValue);
+    if (payload.clientName !== undefined) dataToUpdate.clientName = payload.clientName;
+    if (payload.companyName !== undefined) dataToUpdate.companyName = payload.companyName;
+    if (payload.whatsappNumber !== undefined) {
+      dataToUpdate.whatsappNumber = payload.whatsappNumber;
+    }
+    if (payload.email !== undefined) dataToUpdate.email = payload.email;
+    if (payload.serviceRequested !== undefined) {
+      dataToUpdate.serviceRequested = payload.serviceRequested;
+    }
+    if (payload.message !== undefined) dataToUpdate.message = payload.message;
+    if (payload.status !== undefined) dataToUpdate.status = payload.status;
+    if (payload.assignedToId !== undefined) {
+      dataToUpdate.assignedToId = payload.assignedToId;
+    }
+    if (payload.dealValue !== undefined) {
+      dataToUpdate.dealValue = BigInt(payload.dealValue);
+    }
+    if (payload.nextFollowUpDate !== undefined) {
+      dataToUpdate.nextFollowUpDate = payload.nextFollowUpDate
+        ? new Date(payload.nextFollowUpDate)
+        : null;
     }
 
-    if (nextFollowUpDate !== undefined) {
-      dataToUpdate.nextFollowUpDate = nextFollowUpDate ? new Date(nextFollowUpDate) : null;
-    }
-
-    const updated = await prisma.lead.update({
-      where: { id },
+    const updated = await this.deps.prisma.lead.update({
+      where: { id: current.id },
       data: dataToUpdate,
       include: {
         assignedTo: { select: { id: true, fullName: true } },
       },
     });
 
-    // Record activity logs if status changed or reassigned
     if (payload.status && payload.status !== current.status) {
-      await prisma.activityLog.create({
+      await this.deps.prisma.activityLog.create({
         data: {
           site_id: current.site_id,
           actorId: editorId,
@@ -166,7 +210,7 @@ export class CrmService {
     }
 
     if (payload.assignedToId && payload.assignedToId !== current.assignedToId) {
-      await prisma.activityLog.create({
+      await this.deps.prisma.activityLog.create({
         data: {
           site_id: current.site_id,
           actorId: editorId,
@@ -184,11 +228,23 @@ export class CrmService {
     };
   }
 
-  async addLeadNote(leadId: string, payload: { channel?: string; notes: string }, userId: string) {
-    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-    if (!lead) throw { statusCode: 404, code: "NOT_FOUND", message: "Prospek tidak ditemukan." };
+  async addLeadNote(
+    leadId: string,
+    payload: { site_id?: string; channel?: string; notes: string },
+    userId: string,
+    rawSiteId?: string
+  ) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(
+      payload.site_id ?? rawSiteId
+    );
+    const lead = await this.deps.prisma.lead.findFirst({
+      where: { id: leadId, site_id },
+    });
+    if (!lead) {
+      throw AppError.notFound("Prospek tidak ditemukan.");
+    }
 
-    const note = await prisma.interactionLog.create({
+    const note = await this.deps.prisma.interactionLog.create({
       data: {
         site_id: lead.site_id,
         leadId,
@@ -203,7 +259,8 @@ export class CrmService {
     return note;
   }
 
-  async getFollowUpToday(site_id: string, assignedToId?: string) {
+  async getFollowUpToday(rawSiteId?: string, assignedToId?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     // Current date in WIB (UTC+7)
     const nowWib = new Date(Date.now() + 7 * 60 * 60 * 1000);
     const currentDateStr = nowWib.toISOString().slice(0, 10);
@@ -219,7 +276,7 @@ export class CrmService {
       where.assignedToId = assignedToId;
     }
 
-    const leads = await prisma.lead.findMany({
+    const leads = await this.deps.prisma.lead.findMany({
       where,
       orderBy: { nextFollowUpDate: "asc" },
       include: {
@@ -260,11 +317,23 @@ export class CrmService {
   }
 
   // --- SCHEDULES ---
-  async getSchedules(site_id: string, assignedToId?: string) {
+  async getScheduleById(id: string, rawSiteId?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    return this.deps.prisma.projectSchedule.findFirst({
+      where: { id, site_id },
+      include: {
+        assignedTo: { select: { id: true, fullName: true } },
+        lead: { select: { id: true, clientName: true, companyName: true } },
+      },
+    });
+  }
+
+  async getSchedules(rawSiteId?: string, assignedToId?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const where: any = { site_id };
     if (assignedToId) where.assignedToId = assignedToId;
 
-    return prisma.projectSchedule.findMany({
+    return this.deps.prisma.projectSchedule.findMany({
       where,
       orderBy: { startDate: "asc" },
       include: {
@@ -275,9 +344,11 @@ export class CrmService {
   }
 
   async createSchedule(payload: any, editorId: string) {
-    return prisma.projectSchedule.create({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
+
+    return this.deps.prisma.projectSchedule.create({
       data: {
-        site_id: payload.site_id,
+        site_id,
         leadId: payload.leadId || null,
         taskName: payload.taskName,
         assignedToId: payload.assignedToId,
@@ -292,18 +363,36 @@ export class CrmService {
     });
   }
 
-  async updateSchedule(id: string, payload: any, editorId: string) {
-    const { updatedAt, startDate, endDate, ...updateData } = payload;
-    const dataToUpdate: any = {
-      ...updateData,
+  async updateSchedule(id: string, payload: any, editorId: string, rawSiteId?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(
+      payload?.site_id ?? rawSiteId
+    );
+    const current = await this.deps.prisma.projectSchedule.findFirst({
+      where: { id, site_id },
+    });
+    if (!current) {
+      throw AppError.notFound("Jadwal tidak ditemukan.");
+    }
+
+    // Explicit allowlist field mapping to prevent Mass Assignment
+    const dataToUpdate: Record<string, unknown> = {
       lastEditedById: editorId,
     };
 
-    if (startDate) dataToUpdate.startDate = new Date(startDate);
-    if (endDate) dataToUpdate.endDate = new Date(endDate);
+    if (payload.taskName !== undefined) dataToUpdate.taskName = payload.taskName;
+    if (payload.assignedToId !== undefined) {
+      dataToUpdate.assignedToId = payload.assignedToId;
+    }
+    if (payload.status !== undefined) dataToUpdate.status = payload.status;
+    if (payload.startDate !== undefined) {
+      dataToUpdate.startDate = new Date(payload.startDate);
+    }
+    if (payload.endDate !== undefined) {
+      dataToUpdate.endDate = new Date(payload.endDate);
+    }
 
-    return prisma.projectSchedule.update({
-      where: { id },
+    return this.deps.prisma.projectSchedule.update({
+      where: { id: current.id },
       data: dataToUpdate,
       include: {
         assignedTo: { select: { id: true, fullName: true } },
