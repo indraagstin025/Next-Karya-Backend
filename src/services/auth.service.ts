@@ -15,7 +15,7 @@ const DUMMY_BCRYPT_HASH =
   "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_WINDOW_SEC = 900; // 15 minutes
+const LOCKOUT_WINDOW_SEC = 900;
 
 export interface AuthServiceDeps {
   prisma: PrismaClient;
@@ -24,6 +24,9 @@ export interface AuthServiceDeps {
   logger: ILogger;
 }
 
+/**
+ * Handles staff authentication, brute-force account lockout, and emergency session revocation.
+ */
 export class AuthService {
   constructor(
     private readonly deps: AuthServiceDeps = {
@@ -34,12 +37,16 @@ export class AuthService {
     }
   ) {}
 
+  /**
+   * Authenticates a staff user with constant-time bcrypt comparison (even when the email does not exist)
+   * and enforces a 15-minute account lockout after 5 consecutive failed attempts.
+   * Issues an HS256 JWT containing `iss`, `aud`, `jti`, and `tokenVersion` claims.
+   */
   async login(email: string, passwordPlain: string) {
     const normalizedEmail = email.trim().toLowerCase();
     const lockoutKey = `auth:lockout:${normalizedEmail}`;
     const failCountKey = `auth:fail:${normalizedEmail}`;
 
-    // 1. Check account-level lockout
     const isLocked = await this.deps.cache.get(lockoutKey);
     if (isLocked) {
       this.deps.logger.security("LOGIN_ATTEMPT_ON_LOCKED_ACCOUNT", {
@@ -55,7 +62,6 @@ export class AuthService {
       where: { email: normalizedEmail },
     });
 
-    // 2. Always execute bcrypt.compare to prevent User Enumeration via Timing Attack
     const targetHash = user ? user.passwordHash : DUMMY_BCRYPT_HASH;
     const isMatch = await bcrypt.compare(passwordPlain, targetHash);
 
@@ -85,7 +91,6 @@ export class AuthService {
       );
     }
 
-    // Clear failed login counter upon successful login
     await this.deps.cache.del(failCountKey);
 
     const payload = {
@@ -128,6 +133,10 @@ export class AuthService {
     };
   }
 
+  /**
+   * Lists all registered staff members ordered alphabetically, omitting `passwordHash`
+   * so sensitive credentials are never serialized to the client.
+   */
   async getStaffUsers() {
     return this.deps.prisma.user.findMany({
       orderBy: { fullName: "asc" },
@@ -145,6 +154,10 @@ export class AuthService {
     });
   }
 
+  /**
+   * Atomically increments `tokenVersion` in PostgreSQL, records an immutable `EmergencyAuditLog`,
+   * and updates the Redis token-version key so all existing JWTs for that staff member are immediately rejected.
+   */
   async revokeSessions(
     targetUserId: string,
     reason: string,
