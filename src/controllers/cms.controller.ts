@@ -4,6 +4,9 @@ import { sendSuccess, sendPaginated, sendError } from "../utils/response";
 import { checkOptimisticLock, defaultTenantGuard } from "../utils/optimistic";
 import { ITenantGuard } from "../container/types";
 
+/**
+ * Extracts the client's optimistic lock timestamp from either `req.body.updatedAt` or the `x-updated-at` header.
+ */
 function extractUpdatedAt(req: Request): string | undefined {
   return (
     (typeof req.body?.updatedAt === "string" ? req.body.updatedAt : undefined) ||
@@ -13,13 +16,18 @@ function extractUpdatedAt(req: Request): string | undefined {
   );
 }
 
+/**
+ * HTTP handlers for CMS content management, enforcing tenant isolation and optimistic concurrency control.
+ */
 export class CmsController {
   constructor(
     private readonly cmsService: CmsService = new CmsService(),
     private readonly tenantGuard: ITenantGuard = defaultTenantGuard
   ) {}
 
-  // Categories
+  /**
+   * Lists all article categories for the authorized tenant.
+   */
   getCategories = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -30,6 +38,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates a new article category under the authorized tenant.
+   */
   createCategory = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -40,6 +51,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Updates category metadata or slug within the authorized tenant.
+   */
   updateCategory = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -54,6 +68,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Deletes an empty category within the authorized tenant.
+   */
   deleteCategory = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
@@ -64,7 +81,9 @@ export class CmsController {
     }
   };
 
-  // Posts (Articles)
+  /**
+   * Lists paginated CMS articles with optional status, category, and keyword filters.
+   */
   getPosts = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -88,6 +107,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Retrieves a single CMS article by ID within the authorized tenant.
+   */
   getPostById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -99,6 +121,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates a draft article attributed to the authenticated staff member.
+   */
   createPost = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -109,6 +134,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Updates an article after verifying the client's optimistic lock timestamp.
+   */
   updatePost = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -131,6 +159,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Publishes an article, enforcing optimistic locking when `updatedAt` is provided by the client.
+   */
   publishPost = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -151,6 +182,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Archives an article and invalidates public caches, checking optimistic lock if supplied.
+   */
   archivePost = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -171,7 +205,9 @@ export class CmsController {
     }
   };
 
-  // Portfolios
+  /**
+   * Lists paginated portfolio items for the authorized tenant.
+   */
   getPortfolios = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -193,6 +229,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Retrieves a single portfolio item by ID within the authorized tenant.
+   */
   getPortfolioById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -204,6 +243,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates a draft portfolio entry under the authorized tenant.
+   */
   createPortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -214,6 +256,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Updates a portfolio entry after verifying the client's optimistic lock timestamp.
+   */
   updatePortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -236,6 +281,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Publishes a portfolio entry after validating completeness and optional optimistic lock.
+   */
   publishPortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -256,6 +304,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Archives a portfolio entry and invalidates public portfolio caches.
+   */
   archivePortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -276,7 +327,9 @@ export class CmsController {
     }
   };
 
-  // Services
+  /**
+   * Lists service offerings for the authorized tenant, optionally filtered by publication status.
+   */
   getServices = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -288,6 +341,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Retrieves a single service offering by ID within the authorized tenant.
+   */
   getServiceById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -299,6 +355,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates a draft service offering under the authorized tenant.
+   */
   createService = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -309,6 +368,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Updates a service offering after verifying the client's optimistic lock timestamp.
+   */
   updateService = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -331,6 +393,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Publishes a service offering after validating required fields and optional optimistic lock.
+   */
   publishService = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -351,6 +416,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Archives a service offering and invalidates public service caches.
+   */
   archiveService = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -371,7 +439,9 @@ export class CmsController {
     }
   };
 
-  // Pages
+  /**
+   * Lists static pages for the authorized tenant, optionally filtered by status.
+   */
   getPages = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -383,6 +453,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Retrieves a static page and its ordered content blocks by ID.
+   */
   getPageById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -394,6 +467,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates a static page alongside its initial content blocks.
+   */
   createPage = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -404,6 +480,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Updates a static page and its blocks after verifying the client's optimistic lock timestamp.
+   */
   updatePage = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -426,6 +505,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Publishes a static page and triggers frontend path revalidation.
+   */
   publishPage = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -446,6 +528,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Archives a static page and invalidates its public route cache.
+   */
   archivePage = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -466,7 +551,9 @@ export class CmsController {
     }
   };
 
-  // FAQs
+  /**
+   * Lists FAQ entries for the authorized tenant ordered by display sequence.
+   */
   getFaqs = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -477,6 +564,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Retrieves a single FAQ entry by ID within the authorized tenant.
+   */
   getFaqById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -488,6 +578,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates an FAQ entry and invalidates the public FAQ cache.
+   */
   createFaq = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -498,6 +591,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Updates an FAQ entry after verifying the client's optimistic lock timestamp.
+   */
   updateFaq = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -520,6 +616,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Deletes an FAQ entry and records a pre-deletion snapshot for recovery.
+   */
   deleteFaq = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
@@ -530,7 +629,9 @@ export class CmsController {
     }
   };
 
-  // Testimonials
+  /**
+   * Lists client testimonials for the authorized tenant, optionally filtered by status.
+   */
   getTestimonials = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -542,6 +643,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Retrieves a single client testimonial by ID within the authorized tenant.
+   */
   getTestimonialById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -553,6 +657,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates a client testimonial under the authorized tenant.
+   */
   createTestimonial = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -563,6 +670,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Updates a client testimonial after verifying the client's optimistic lock timestamp.
+   */
   updateTestimonial = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -585,6 +695,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Archives a client testimonial and invalidates public testimonial caches.
+   */
   archiveTestimonial = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -605,7 +718,9 @@ export class CmsController {
     }
   };
 
-  // Snapshots
+  /**
+   * Lists recent revision snapshots for the authorized tenant, optionally filtered by entity type and ID.
+   */
   getSnapshots = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -618,6 +733,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Restores a CMS entity from a historical snapshot and records a backup snapshot of the displaced state.
+   */
   restoreSnapshot = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
@@ -632,7 +750,9 @@ export class CmsController {
     }
   };
 
-  // Redirects
+  /**
+   * Lists all URL redirect rules for the authorized tenant.
+   */
   getRedirects = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -643,6 +763,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Creates a manual URL redirect rule after checking for self-loops and circular chains.
+   */
   createRedirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
@@ -653,6 +776,9 @@ export class CmsController {
     }
   };
 
+  /**
+   * Deletes a URL redirect rule within the authorized tenant.
+   */
   deleteRedirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
