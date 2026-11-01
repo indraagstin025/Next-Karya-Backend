@@ -1,3 +1,6 @@
+/**
+ * Contract for structured application and security audit logging.
+ */
 export interface ILogger {
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
@@ -8,6 +11,10 @@ export interface ILogger {
 const SENSITIVE_KEY_PATTERN =
   /password|token|secret|authorization|cookie|credential|api[-_]?key/i;
 
+/**
+ * Recursively traverses metadata objects up to depth 4, redacting keys that match
+ * credential patterns and truncating long strings to prevent log-injection or secret leaks.
+ */
 function sanitizeMeta(value: unknown, depth = 0): unknown {
   if (depth > 4 || value === null || value === undefined) {
     return value;
@@ -32,9 +39,15 @@ function sanitizeMeta(value: unknown, depth = 0): unknown {
   return value;
 }
 
+/**
+ * Structured JSON logger that automatically redacts sensitive fields before writing to stdout/stderr.
+ */
 export class SecurityLogger implements ILogger {
-  constructor(private readonly envMode: string = "development") {}
+  constructor(private readonly envMode: string = "development") { }
 
+  /**
+   * Serializes a log entry as a single-line JSON string with ISO timestamp and sanitized metadata.
+   */
   private formatEntry(
     level: "INFO" | "WARN" | "ERROR" | "SECURITY",
     message: string,
@@ -49,18 +62,31 @@ export class SecurityLogger implements ILogger {
     return JSON.stringify(payload);
   }
 
+  /**
+   * Records normal operational milestones such as server startup, cron completion, or staff login.
+   */
   info(message: string, meta?: Record<string, unknown>): void {
     console.log(this.formatEntry("INFO", message, meta));
   }
 
+  /**
+   * Records recoverable anomalies such as webhook retry failures or non-fatal file cleanup issues.
+   */
   warn(message: string, meta?: Record<string, unknown>): void {
     console.warn(this.formatEntry("WARN", message, meta));
   }
 
+  /**
+   * Records unhandled exceptions and database/infrastructure failures with correlation context.
+   */
   error(message: string, meta?: Record<string, unknown>): void {
     console.error(this.formatEntry("ERROR", message, meta));
   }
 
+  /**
+   * Records high-priority security events including account lockouts, revoked token usage,
+   * emergency overrides, and blocked malicious payloads.
+   */
   security(event: string, meta?: Record<string, unknown>): void {
     console.warn(this.formatEntry("SECURITY", `[SECURITY_EVENT] ${event}`, meta));
   }
@@ -68,4 +94,3 @@ export class SecurityLogger implements ILogger {
 
 export const defaultLogger: ILogger = new SecurityLogger();
 export const logger: ILogger = defaultLogger;
-
