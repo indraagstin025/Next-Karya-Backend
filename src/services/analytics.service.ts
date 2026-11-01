@@ -8,6 +8,9 @@ export interface AnalyticsServiceDeps {
   tenantGuard: ITenantGuard;
 }
 
+/**
+ * Aggregates pre-rolled-up daily traffic metrics (`analytics_daily`) for the internal CMS dashboard.
+ */
 export class AnalyticsService {
   constructor(
     private readonly deps: AnalyticsServiceDeps = {
@@ -16,6 +19,10 @@ export class AnalyticsService {
     }
   ) {}
 
+  /**
+   * Computes site-wide KPI totals (visitors, sessions, pageviews, bounce rate, and conversion rate)
+   * over the requested date window by querying global rollup rows (`path = '*'`).
+   */
   async getOverview(rawSiteId?: string, fromDateStr?: string, toDateStr?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const to = toDateStr ? new Date(toDateStr) : new Date();
@@ -23,7 +30,6 @@ export class AnalyticsService {
       ? new Date(fromDateStr)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    // Filter analytics_daily for path = '*' strictly
     const records = await this.deps.prisma.analyticsDaily.findMany({
       where: {
         site_id,
@@ -92,6 +98,10 @@ export class AnalyticsService {
     };
   }
 
+  /**
+   * Ranks individual URL paths (`path !== '*'`) by total pageviews and calculates per-page
+   * bounce and conversion rates, capped to a maximum of 100 rows.
+   */
   async getPages(
     rawSiteId?: string,
     fromDateStr?: string,
@@ -169,6 +179,10 @@ export class AnalyticsService {
     });
   }
 
+  /**
+   * Groups daily analytics rollups by acquisition channel (`google`, `direct`, `instagram`, `referral`)
+   * and computes each channel's percentage share of total pageviews.
+   */
   async getSources(rawSiteId?: string, fromDateStr?: string, toDateStr?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const to = toDateStr ? new Date(toDateStr) : new Date();
