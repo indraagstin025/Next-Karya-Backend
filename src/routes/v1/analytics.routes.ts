@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { appContainer, AppContainer } from "../../container";
 
+/**
+ * Creates the `/analytics` router with mandatory JWT authentication for traffic and conversion reporting.
+ */
 export function createAnalyticsRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { analytics: analyticsController } = container.controllers;
