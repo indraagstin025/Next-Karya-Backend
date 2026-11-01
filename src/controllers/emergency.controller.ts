@@ -1,24 +1,29 @@
 import { Request, Response, NextFunction } from "express";
 import { EmergencyService } from "../services/emergency.service";
 import { sendSuccess } from "../utils/response";
-
-const emergencyService = new EmergencyService();
+import { defaultTenantGuard } from "../utils/optimistic";
+import { ITenantGuard } from "../container/types";
 
 export class EmergencyController {
-  async getEmergencyOverview(req: Request, res: Response, next: NextFunction) {
+  constructor(
+    private readonly emergencyService: EmergencyService = new EmergencyService(),
+    private readonly tenantGuard: ITenantGuard = defaultTenantGuard
+  ) {}
+
+  getEmergencyOverview = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
-      const limit = parseInt(req.query.limit as string, 10) || 30;
-      const result = await emergencyService.getEmergencyOverview(site_id, limit);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 30, 1), 100);
+      const result = await this.emergencyService.getEmergencyOverview(site_id, limit);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async unpublishContent(req: Request, res: Response, next: NextFunction) {
+  unpublishContent = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await emergencyService.unpublishContent({
+      const result = await this.emergencyService.unpublishContent({
         site_id: req.body.site_id,
         targetEntity: req.body.targetEntity,
         targetId: req.body.targetId,
@@ -29,11 +34,11 @@ export class EmergencyController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async lockContactForm(req: Request, res: Response, next: NextFunction) {
+  lockContactForm = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await emergencyService.lockContactForm({
+      const result = await this.emergencyService.lockContactForm({
         site_id: req.body.site_id,
         reason: req.body.reason,
         executedById: req.user!.id,
@@ -42,11 +47,11 @@ export class EmergencyController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async unlockContactForm(req: Request, res: Response, next: NextFunction) {
+  unlockContactForm = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await emergencyService.unlockContactForm({
+      const result = await this.emergencyService.unlockContactForm({
         site_id: req.body.site_id,
         reason: req.body.reason,
         executedById: req.user!.id,
@@ -55,11 +60,11 @@ export class EmergencyController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async setAlertBanner(req: Request, res: Response, next: NextFunction) {
+  setAlertBanner = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await emergencyService.setAlertBanner({
+      const result = await this.emergencyService.setAlertBanner({
         site_id: req.body.site_id,
         isActive: req.body.isActive,
         alertBanner: req.body.alertBanner,
@@ -70,12 +75,12 @@ export class EmergencyController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async reassignLead(req: Request, res: Response, next: NextFunction) {
+  reassignLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
-      const result = await emergencyService.reassignLead(id, {
+      const result = await this.emergencyService.reassignLead(id, {
         site_id: req.body.site_id,
         newAssignedToId: req.body.newAssignedToId,
         reason: req.body.reason,
@@ -85,5 +90,5 @@ export class EmergencyController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 }
