@@ -13,6 +13,10 @@ export interface PublicServiceDeps {
   logger: ILogger;
 }
 
+/**
+ * Serves public read-only website content (strictly filtered to `PUBLISHED` or `isActive: true`)
+ * as well as public consultation form intake and anonymous analytics beacon ingestion.
+ */
 export class PublicService {
   constructor(
     private readonly deps: PublicServiceDeps = {
@@ -22,6 +26,10 @@ export class PublicService {
     }
   ) {}
 
+  /**
+   * Returns public site operational status (`isFormLocked`, `isAlertActive`, `alertBanner`),
+   * supplying safe default values if the site record has not been seeded yet.
+   */
   async getSiteStatus(rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const site = await this.deps.prisma.site.findUnique({
@@ -51,6 +59,9 @@ export class PublicService {
     return site;
   }
 
+  /**
+   * Lists public blog categories ordered alphabetically for article filtering.
+   */
   async getCategories(rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     return this.deps.prisma.category.findMany({
@@ -64,6 +75,9 @@ export class PublicService {
     });
   }
 
+  /**
+   * Resolves a custom 301/302 redirect rule when a visitor requests a legacy URL path.
+   */
   async lookupRedirect(rawSiteId: string | undefined, fromPath: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const normalizedPath = fromPath.startsWith("/") ? fromPath : `/${fromPath}`;
@@ -81,6 +95,10 @@ export class PublicService {
     });
   }
 
+  /**
+   * Queries published blog articles with pagination, category/tag filtering, and keyword search,
+   * omitting full body `content` to keep list payloads lightweight.
+   */
   async getArticles(query: {
     site_id?: string;
     page: number;
@@ -159,6 +177,9 @@ export class PublicService {
     return { items, meta };
   }
 
+  /**
+   * Fetches a single published article by slug and resolves its published `relatedPosts` summaries.
+   */
   async getArticleBySlug(rawSiteId: string | undefined, slug: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const post = await this.deps.prisma.post.findFirst({
@@ -211,6 +232,9 @@ export class PublicService {
     };
   }
 
+  /**
+   * Lists published portfolio case studies ordered by featured priority and manual `sortOrder`.
+   */
   async getPortfolios(query: {
     site_id?: string;
     isFeatured?: boolean;
@@ -271,6 +295,9 @@ export class PublicService {
     return { items, meta };
   }
 
+  /**
+   * Fetches full details of a published portfolio case study by slug.
+   */
   async getPortfolioBySlug(rawSiteId: string | undefined, slug: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     return this.deps.prisma.portfolio.findFirst({
@@ -282,6 +309,9 @@ export class PublicService {
     });
   }
 
+  /**
+   * Lists published service packages ordered by `sortOrder` ascending.
+   */
   async getServices(rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     return this.deps.prisma.service.findMany({
@@ -308,6 +338,9 @@ export class PublicService {
     });
   }
 
+  /**
+   * Lists active FAQ entries (`isActive: true`), optionally filtered by category.
+   */
   async getFaqs(rawSiteId?: string, category?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const where: any = {
@@ -332,6 +365,9 @@ export class PublicService {
     });
   }
 
+  /**
+   * Lists published client testimonials along with their linked portfolio title and slug.
+   */
   async getTestimonials(rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     return this.deps.prisma.testimonial.findMany({
@@ -358,6 +394,9 @@ export class PublicService {
     });
   }
 
+  /**
+   * Fetches a published static page by slug.
+   */
   async getPageBySlug(rawSiteId: string | undefined, slug: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     return this.deps.prisma.page.findFirst({
@@ -379,6 +418,11 @@ export class PublicService {
     });
   }
 
+  /**
+   * Processes a public consultation form submission: silently drops automated spam when the
+   * honeypot field (`website_url`) is populated, rejects submissions with HTTP 403 when the
+   * site's emergency form lock (`isFormLocked`) is active, and creates a `BARU` lead.
+   */
   async submitLead(payload: {
     site_id?: string;
     clientName: string;
@@ -445,6 +489,10 @@ export class PublicService {
     return { trapped: false, leadId: lead.id };
   }
 
+  /**
+   * Asynchronously persists an anonymous visitor beacon event (`pageview`, `whatsapp_click`,
+   * `form_submit`, or `heartbeat`) using a non-reversible SHA-256 visitor hash without blocking the HTTP response.
+   */
   async recordAnalyticsEvent(payload: {
     site_id?: string;
     sessionId: string;
