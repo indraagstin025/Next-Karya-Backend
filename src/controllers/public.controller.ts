@@ -4,12 +4,18 @@ import { sendSuccess, sendPaginated, sendError } from "../utils/response";
 import { defaultTenantGuard } from "../utils/optimistic";
 import { ITenantGuard } from "../container/types";
 
+/**
+ * HTTP handlers for unauthenticated public website content delivery, lead intake, and analytics ingestion.
+ */
 export class PublicController {
   constructor(
     private readonly publicService: PublicService = new PublicService(),
     private readonly tenantGuard: ITenantGuard = defaultTenantGuard
   ) {}
 
+  /**
+   * Returns emergency alert banner state and contact form lock status for the public frontend.
+   */
   getSiteStatus = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -20,6 +26,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Lists article categories alongside their published post counts.
+   */
   getCategories = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -30,6 +39,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Resolves active 301/302 redirect rules for legacy slugs on the public website.
+   */
   lookupRedirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -44,6 +56,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Lists paginated published articles filtered by category, tag, or search keyword.
+   */
   getArticles = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -68,6 +83,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Retrieves a single published article by slug, returning 404 if unpublished or absent.
+   */
   getArticleBySlug = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -84,6 +102,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Lists paginated published portfolios with optional featured filtering.
+   */
   getPortfolios = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -109,6 +130,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Retrieves a single published portfolio case study by slug.
+   */
   getPortfolioBySlug = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -125,6 +149,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Lists published service offerings ordered by display sequence.
+   */
   getServices = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -135,6 +162,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Lists active FAQs for the public website, optionally filtered by category.
+   */
   getFaqs = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -146,6 +176,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Lists published client testimonials ordered by display sequence.
+   */
   getTestimonials = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -156,6 +189,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Retrieves a published static page and its structured content blocks by slug.
+   */
   getPageBySlug = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -172,6 +208,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Processes public consultation form submissions and returns a confirmation message without leaking internal lead IDs.
+   */
   submitLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       await this.publicService.submitLead(req.body);
@@ -188,6 +227,9 @@ export class PublicController {
     }
   };
 
+  /**
+   * Ingests a client-side analytics event from the public website.
+   */
   recordAnalyticsEvent = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.publicService.recordAnalyticsEvent(req.body);
