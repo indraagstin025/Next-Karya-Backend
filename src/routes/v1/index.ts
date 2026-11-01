@@ -10,12 +10,15 @@ import { createEmergencyRouter } from "./emergency.routes";
 import { validateBody, validateParams, idParamSchema } from "../../middlewares/validate";
 import { revokeSessionsSchema } from "../../validators/auth";
 
+/**
+ * Assembles the `/api/v1` router, mounting health checks, staff session routes,
+ * and domain sub-routers wired with the provided Dependency Injection container.
+ */
 export function createV1Router(container: AppContainer = appContainer): Router {
   const router = Router();
   const { auth: authController } = container.controllers;
   const { requireAuth } = container.middlewares;
 
-  // Health check
   router.get("/health", (_req, res) => {
     res.json({
       success: true,
@@ -30,7 +33,6 @@ export function createV1Router(container: AppContainer = appContainer): Router {
     });
   });
 
-  // Staff users & session revocation (Contract 8.5)
   router.get("/users", requireAuth, authController.getStaffUsers);
   router.post(
     "/users/:id/revoke-sessions",
@@ -48,7 +50,6 @@ export function createV1Router(container: AppContainer = appContainer): Router {
   const emergencyRouter = createEmergencyRouter(container);
   const publicRouter = createPublicRouter(container);
 
-  // Mount modular sub-routers
   router.use("/auth", authRouter);
   router.use("/cms", cmsRouter);
   router.use("/crm", crmRouter);
