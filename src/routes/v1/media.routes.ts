@@ -3,6 +3,9 @@ import { appContainer, AppContainer } from "../../container";
 import { uploadMiddleware } from "../../controllers/media.controller";
 import { validateParams, idParamSchema } from "../../middlewares/validate";
 
+/**
+ * Creates the `/media` router with upload rate limiting (20 uploads/min) and multipart file validation.
+ */
 export function createMediaRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { media: mediaController } = container.controllers;
