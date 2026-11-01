@@ -51,6 +51,9 @@ interface FileValidationResult {
   height?: number;
 }
 
+/**
+ * Parses JPEG SOF0-SOF3 markers to extract pixel dimensions without loading the full image into memory.
+ */
 function extractJpegDimensions(buf: Buffer): { width: number; height: number } | null {
   let offset = 2;
   while (offset < buf.length) {
@@ -73,6 +76,9 @@ function extractJpegDimensions(buf: Buffer): { width: number; height: number } |
   return null;
 }
 
+/**
+ * Parses WebP VP8X, VP8, and VP8L chunk headers to extract canvas width and height.
+ */
 function extractWebpDimensions(buf: Buffer): { width: number; height: number } | null {
   if (buf.length < 30) return null;
   const chunkType = buf.toString("ascii", 12, 16);
@@ -102,6 +108,10 @@ function extractWebpDimensions(buf: Buffer): { width: number; height: number } |
   return null;
 }
 
+/**
+ * Inspects binary magic numbers, structural EOF markers, pixel bounds (max 8000x8000),
+ * and SVG XSS payloads to reject spoofed, truncated, or malicious uploads.
+ */
 export function validateFileIntegrity(filePath: string, mimeType: string): FileValidationResult {
   try {
     const buf = fs.readFileSync(filePath);
@@ -254,6 +264,9 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
   }
 }
 
+/**
+ * Multer middleware configured with sanitized disk filenames, a 10 MB ceiling, and strict MIME allowlisting.
+ */
 export const uploadMiddleware = multer({
   storage,
   limits: {
@@ -268,12 +281,18 @@ export const uploadMiddleware = multer({
   },
 });
 
+/**
+ * HTTP handlers for media library listing, binary-validated uploads with SHA-256 deduplication, and asset deletion.
+ */
 export class MediaController {
   constructor(
     private readonly mediaService: MediaService = new MediaService(),
     private readonly tenantGuard: ITenantGuard = defaultTenantGuard
   ) {}
 
+  /**
+   * Lists paginated media assets for the authorized tenant with optional filename and MIME filters.
+   */
   getMedia = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -296,6 +315,10 @@ export class MediaController {
     }
   };
 
+  /**
+   * Validates uploaded file size and binary integrity, deduplicates via SHA-256 hash,
+   * and removes temporary disk files if validation or persistence fails.
+   */
   uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.file) {
@@ -333,7 +356,6 @@ export class MediaController {
       );
       const altText = req.body.altText as string | undefined;
 
-      // Pengecekan Duplikasi Berkas (SHA-256 Checksum)
       const fileBuf = fs.readFileSync(file.path);
       const fileHash = crypto.createHash("sha256").update(fileBuf).digest("hex");
       const duplicateMedia = await this.mediaService.findDuplicateMedia(
@@ -378,6 +400,9 @@ export class MediaController {
     }
   };
 
+  /**
+   * Deletes a media asset after verifying tenant ownership and ensuring it is not referenced by CMS content.
+   */
   deleteMedia = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
