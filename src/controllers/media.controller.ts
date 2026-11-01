@@ -1,0 +1,342 @@
+import { Request, Response, NextFunction } from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import crypto from "crypto";
+import { MediaService } from "../services/media.service";
+import { env } from "../config/env";
+import { sendSuccess, sendPaginated, sendError } from "../utils/response";
+
+const mediaService = new MediaService();
+
+const uploadDirPath = path.resolve(process.cwd(), env.UPLOAD_DIR);
+if (!fs.existsSync(uploadDirPath)) {
+  fs.mkdirSync(uploadDirPath, { recursive: true });
+}
+
+const allowedMimeToExt: Record<string, string[]> = {
+  "image/webp": [".webp"],
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/svg+xml": [".svg"],
+  "application/pdf": [".pdf"],
+};
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDirPath);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const rawExt = path.extname(file.originalname).toLowerCase();
+    const validExts = allowedMimeToExt[file.mimetype] || [".bin"];
+    const ext = validExts.includes(rawExt) ? rawExt : validExts[0];
+    const cleanBaseName = path
+      .basename(file.originalname, rawExt)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 60) || "asset";
+    cb(null, `${cleanBaseName}-${uniqueSuffix}${ext}`);
+  },
+});
+
+const allowedMimeTypes = Object.keys(allowedMimeToExt);
+
+interface FileValidationResult {
+  valid: boolean;
+  reason?: string;
+  width?: number;
+  height?: number;
+}
+
+function extractJpegDimensions(buf: Buffer): { width: number; height: number } | null {
+  let offset = 2;
+  while (offset < buf.length) {
+    if (buf[offset] !== 0xff) {
+      offset++;
+      continue;
+    }
+    const marker = buf[offset + 1];
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (offset + 4 > buf.length) break;
+    const length = buf.readUInt16BE(offset + 2);
+    if ([0xc0, 0xc1, 0xc2, 0xc3].includes(marker)) {
+      if (offset + 9 > buf.length) break;
+      const height = buf.readUInt16BE(offset + 5);
+      const width = buf.readUInt16BE(offset + 7);
+      return { width, height };
+    }
+    offset += 2 + length;
+  }
+  return null;
+}
+
+function extractWebpDimensions(buf: Buffer): { width: number; height: number } | null {
+  if (buf.length < 30) return null;
+  const chunkType = buf.toString("ascii", 12, 16);
+  if (chunkType === "VP8X") {
+    const width = (buf[24] | (buf[25] << 8) | (buf[26] << 16)) + 1;
+    const height = (buf[27] | (buf[28] << 8) | (buf[29] << 16)) + 1;
+    return { width, height };
+  }
+  if (chunkType === "VP8 ") {
+    if (buf[23] === 0x9d && buf[24] === 0x01 && buf[25] === 0x2a) {
+      const width = buf.readUInt16LE(26) & 0x3fff;
+      const height = buf.readUInt16LE(28) & 0x3fff;
+      return { width, height };
+    }
+  }
+  if (chunkType === "VP8L") {
+    if (buf[20] === 0x2f) {
+      const b1 = buf[21], b2 = buf[22], b3 = buf[23], b4 = buf[24];
+      const width = 1 + (((b2 & 0x3f) << 8) | b1);
+      const height = 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6));
+      return { width, height };
+    }
+  }
+  return null;
+}
+
+function validateFileIntegrity(filePath: string, mimeType: string): FileValidationResult {
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (!buf || buf.length < 16) {
+      return { valid: false, reason: "Berkas kosong atau ukurannya terlalu kecil." };
+    }
+
+    if (mimeType === "image/png") {
+      const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      if (buf.length < 24 || !buf.subarray(0, 8).equals(pngMagic)) {
+        return { valid: false, reason: "Tanda tangan berkas PNG tidak valid atau palsu." };
+      }
+      if (buf.toString("ascii", 12, 16) !== "IHDR") {
+        return { valid: false, reason: "Struktur chunk IHDR berkas PNG rusak." };
+      }
+      const width = buf.readUInt32BE(16);
+      const height = buf.readUInt32BE(20);
+      if (width === 0 || height === 0) {
+        return { valid: false, reason: "Dimensi gambar PNG tidak valid (0 piksel)." };
+      }
+      if (width > 8000 || height > 8000) {
+        return { valid: false, reason: `Dimensi gambar (${width}x${height}px) melebihi batas aman maksimal 8000x8000 piksel.` };
+      }
+      const iendChunk = Buffer.from([0x49, 0x45, 0x4e, 0x44]);
+      const iendIndex = buf.lastIndexOf(iendChunk);
+      if (iendIndex === -1 || iendIndex < buf.length - 16) {
+        return { valid: false, reason: "Berkas PNG rusak atau terpotong (chunk akhir IEND tidak ditemukan)." };
+      }
+      return { valid: true, width, height };
+    }
+
+    if (mimeType === "image/jpeg") {
+      if (buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) {
+        return { valid: false, reason: "Tanda tangan berkas JPEG tidak valid atau palsu." };
+      }
+      const lastBytes = buf.subarray(Math.max(0, buf.length - 128));
+      let hasEoi = false;
+      for (let i = 0; i < lastBytes.length - 1; i++) {
+        if (lastBytes[i] === 0xff && lastBytes[i + 1] === 0xd9) {
+          hasEoi = true;
+          break;
+        }
+      }
+      if (!hasEoi) {
+        return { valid: false, reason: "Berkas JPEG rusak atau terpotong (marker akhir EOI tidak ditemukan)." };
+      }
+      const dims = extractJpegDimensions(buf);
+      if (dims) {
+        if (dims.width > 8000 || dims.height > 8000) {
+          return { valid: false, reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.` };
+        }
+        return { valid: true, width: dims.width, height: dims.height };
+      }
+      return { valid: true };
+    }
+
+    if (mimeType === "image/webp") {
+      if (
+        buf.toString("ascii", 0, 4) !== "RIFF" ||
+        buf.toString("ascii", 8, 12) !== "WEBP"
+      ) {
+        return { valid: false, reason: "Tanda tangan berkas WebP tidak valid atau palsu." };
+      }
+      const declaredSize = buf.readUInt32LE(4) + 8;
+      if (buf.length < declaredSize) {
+        return { valid: false, reason: "Berkas WebP rusak atau terpotong (ukuran berkas lebih kecil dari deklarasi header)." };
+      }
+      const dims = extractWebpDimensions(buf);
+      if (dims) {
+        if (dims.width > 8000 || dims.height > 8000) {
+          return { valid: false, reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.` };
+        }
+        return { valid: true, width: dims.width, height: dims.height };
+      }
+      return { valid: true };
+    }
+
+    if (mimeType === "image/svg+xml") {
+      const content = buf.toString("utf8");
+      if (!content.includes("<svg") || !content.includes("</svg>")) {
+        return { valid: false, reason: "Format SVG tidak lengkap atau rusak (tidak memiliki tag <svg> pembuka dan penutup)." };
+      }
+      const lower = content.toLowerCase();
+      const forbiddenPatterns = [
+        "<script",
+        "javascript:",
+        "onload=",
+        "onerror=",
+        "onclick=",
+        "<foreignobject",
+        "<iframe",
+        "data:text/html",
+        "xlink:href=\"javascript:",
+        "xlink:href='javascript:",
+      ];
+      for (const pat of forbiddenPatterns) {
+        if (lower.includes(pat)) {
+          return { valid: false, reason: `Berkas SVG ditolak demi keamanan karena mengandung pola berbahaya: ${pat}` };
+        }
+      }
+      return { valid: true };
+    }
+
+    if (mimeType === "application/pdf") {
+      if (buf.toString("ascii", 0, 5) !== "%PDF-") {
+        return { valid: false, reason: "Tanda tangan berkas PDF tidak valid atau palsu." };
+      }
+      const lastBytes = buf.subarray(Math.max(0, buf.length - 1024)).toString("ascii");
+      if (!lastBytes.includes("%%EOF")) {
+        return { valid: false, reason: "Berkas PDF rusak atau terpotong (marker %%EOF tidak ditemukan)." };
+      }
+      return { valid: true };
+    }
+
+    return { valid: false, reason: "Tipe berkas tidak didukung." };
+  } catch (err: any) {
+    return { valid: false, reason: `Gagal memverifikasi keutuhan berkas: ${err?.message || "Kesalahan pembacaan"}` };
+  }
+}
+
+export const uploadMiddleware = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("UNSUPPORTED_MEDIA_TYPE"));
+    }
+  },
+});
+
+export class MediaController {
+  async getMedia(req: Request, res: Response, next: NextFunction) {
+    try {
+      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const search = req.query.search as string | undefined;
+      const mimeType = req.query.mimeType as string | undefined;
+      const page = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 100);
+
+      const { items, meta } = await mediaService.getMedia({
+        site_id,
+        search,
+        mimeType,
+        page,
+        limit,
+      });
+
+      return sendPaginated(res, items, meta);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async uploadMedia(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        return sendError(res, 400, "MISSING_FILE", "Berkas unggahan wajib disertakan.");
+      }
+
+      const file = req.file;
+      const isPdf = file.mimetype === "application/pdf";
+      const maxAllowedSize = isPdf ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+
+      if (file.size > maxAllowedSize) {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        return sendError(
+          res,
+          400,
+          "FILE_TOO_LARGE",
+          `Ukuran berkas melebihi batas maksimal (${isPdf ? "10 MB untuk PDF" : "5 MB untuk Gambar"}).`
+        );
+      }
+
+      const validation = validateFileIntegrity(file.path, file.mimetype);
+      if (!validation.valid) {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        return sendError(
+          res,
+          400,
+          "CORRUPTED_OR_INVALID_FILE",
+          validation.reason || "Berkas gambar rusak, terpotong, atau tidak memenuhi standar keamanan."
+        );
+      }
+
+      const site_id = (req.body.site_id as string) || (req.query.site_id as string) || "nextkarya-main";
+      const altText = req.body.altText as string | undefined;
+
+      // Pengecekan Duplikasi Berkas (SHA-256 Checksum)
+      const fileBuf = fs.readFileSync(file.path);
+      const fileHash = crypto.createHash("sha256").update(fileBuf).digest("hex");
+      const duplicateMedia = await mediaService.findDuplicateMedia(site_id, file.size, fileHash);
+
+      if (duplicateMedia) {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        return sendSuccess(
+          res,
+          {
+            ...duplicateMedia,
+            isDuplicate: true,
+            message: "Berkas identik sudah ada di Pustaka Media. Menggunakan berkas yang telah tersimpan.",
+          },
+          200
+        );
+      }
+
+      const media = await mediaService.saveUploadedFile(
+        file,
+        site_id,
+        req.user!.id,
+        altText,
+        validation.width,
+        validation.height
+      );
+
+      return sendSuccess(res, media, 201);
+    } catch (err) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch {
+          // ignore cleanup failure
+        }
+      }
+      next(err);
+    }
+  }
+
+  async deleteMedia(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id as string;
+      const site_id = (req.query.site_id as string) || (req.body?.site_id as string);
+      const result = await mediaService.deleteMedia(id, site_id);
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  }
+}
