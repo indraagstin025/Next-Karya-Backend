@@ -1,7 +1,28 @@
-import { prisma } from "../config/prisma";
-import { cache } from "../config/redis";
-import { triggerRevalidationWebhook } from "../utils/webhook";
+import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../config/prisma";
+import { cache as defaultCache } from "../config/redis";
+import { defaultWebhookNotifier } from "../utils/webhook";
+import { defaultTenantGuard } from "../utils/optimistic";
 import { PaginationMeta } from "../utils/response";
+import { AppError } from "../core/AppError";
+import { ILogger, logger as defaultLogger } from "../core/logger";
+import { ICacheService, ITenantGuard, IWebhookNotifier } from "../container/types";
+
+export interface CmsServiceDeps {
+  prisma: PrismaClient;
+  cache: ICacheService;
+  webhook: IWebhookNotifier;
+  tenantGuard: ITenantGuard;
+  logger: ILogger;
+}
+
+const defaultCmsDeps: CmsServiceDeps = {
+  prisma: defaultPrisma,
+  cache: defaultCache,
+  webhook: defaultWebhookNotifier,
+  tenantGuard: defaultTenantGuard,
+  logger: defaultLogger,
+};
 
 function estimateReadingTimeMinutes(content: unknown): number {
   try {
@@ -18,16 +39,27 @@ function estimateReadingTimeMinutes(content: unknown): number {
 }
 
 export class CmsService {
+  private readonly deps: CmsServiceDeps;
+
+  constructor(deps: Partial<CmsServiceDeps> = {}) {
+    this.deps = { ...defaultCmsDeps, ...deps };
+  }
+
   private async invalidateCmsCache(site_id: string, tag: string) {
     await Promise.allSettled([
-      cache.del(`cache:cms:${site_id}:${tag}`),
-      cache.del(`cache:cms:${site_id}:pricing`),
+      this.deps.cache.del(`cache:cms:${site_id}:${tag}`),
+      this.deps.cache.del(`cache:cms:${site_id}:pricing`),
     ]);
-    triggerRevalidationWebhook(tag).catch(console.error);
+    this.deps.webhook.triggerRevalidation(tag).catch((err) => {
+      this.deps.logger.warn("Revalidation webhook call failed", {
+        tag,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   private async nextSnapshotVersion(site_id: string, entityType: string, entityId: string): Promise<number> {
-    const latest = await prisma.contentSnapshot.findFirst({
+    const latest = await this.deps.prisma.contentSnapshot.findFirst({
       where: { site_id, entityType, entityId },
       orderBy: { version: "desc" },
       select: { version: true },
@@ -37,7 +69,7 @@ export class CmsService {
 
   // Categories
   async getCategories(site_id: string) {
-    return prisma.category.findMany({
+    return this.deps.prisma.category.findMany({
       where: { site_id },
       orderBy: { name: "asc" },
       include: {
@@ -49,7 +81,7 @@ export class CmsService {
   }
 
   async createCategory(site_id: string, payload: { name: string; slug: string }) {
-    return prisma.category.create({
+    return this.deps.prisma.category.create({
       data: {
         site_id,
         name: payload.name,
@@ -59,14 +91,14 @@ export class CmsService {
   }
 
   async updateCategory(id: string, site_id: string, payload: { name?: string; slug?: string }) {
-    const existing = await prisma.category.findFirst({
+    const existing = await this.deps.prisma.category.findFirst({
       where: { id, site_id },
     });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Kategori tidak ditemukan." };
+      throw AppError.notFound("Kategori tidak ditemukan.");
     }
 
-    return prisma.category.update({
+    return this.deps.prisma.category.update({
       where: { id: existing.id },
       data: {
         ...(payload.name !== undefined ? { name: payload.name } : {}),
@@ -76,22 +108,21 @@ export class CmsService {
   }
 
   async deleteCategory(id: string, site_id: string) {
-    const existing = await prisma.category.findFirst({
+    const existing = await this.deps.prisma.category.findFirst({
       where: { id, site_id },
       include: { _count: { select: { posts: true } } },
     });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Kategori tidak ditemukan." };
+      throw AppError.notFound("Kategori tidak ditemukan.");
     }
     if (existing._count.posts > 0) {
-      throw {
-        statusCode: 400,
-        code: "CATEGORY_IN_USE",
-        message: `Kategori "${existing.name}" masih digunakan oleh ${existing._count.posts} artikel dan tidak dapat dihapus.`,
-      };
+      throw AppError.badRequest(
+        "CATEGORY_IN_USE",
+        `Kategori "${existing.name}" masih digunakan oleh ${existing._count.posts} artikel dan tidak dapat dihapus.`
+      );
     }
 
-    await prisma.category.delete({ where: { id: existing.id } });
+    await this.deps.prisma.category.delete({ where: { id: existing.id } });
     return { message: "Kategori berhasil dihapus." };
   }
 
@@ -107,7 +138,7 @@ export class CmsService {
     const { site_id, status, category, page, limit, search } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { site_id };
+    const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
       where.status = status;
     }
@@ -122,9 +153,9 @@ export class CmsService {
     }
 
     const [total, items] = await Promise.all([
-      prisma.post.count({ where }),
-      prisma.post.findMany({
-        where,
+      this.deps.prisma.post.count({ where: where as any }),
+      this.deps.prisma.post.findMany({
+        where: where as any,
         skip,
         take: limit,
         orderBy: { updatedAt: "desc" },
@@ -147,7 +178,7 @@ export class CmsService {
   }
 
   async getPostById(id: string, site_id: string) {
-    return prisma.post.findFirst({
+    return this.deps.prisma.post.findFirst({
       where: { id, site_id },
       include: {
         category: { select: { id: true, name: true, slug: true } },
@@ -158,22 +189,21 @@ export class CmsService {
   }
 
   async createPost(site_id: string, payload: any, authorId: string) {
-    const category = await prisma.category.findFirst({
+    const category = await this.deps.prisma.category.findFirst({
       where: { id: payload.categoryId, site_id },
       select: { id: true },
     });
     if (!category) {
-      throw {
-        statusCode: 400,
-        code: "INVALID_CATEGORY",
-        message: "Kategori yang dipilih tidak ditemukan pada situs ini.",
-      };
+      throw AppError.badRequest(
+        "INVALID_CATEGORY",
+        "Kategori yang dipilih tidak ditemukan pada situs ini."
+      );
     }
 
     const readingTimeMinutes =
       payload.readingTimeMinutes ?? estimateReadingTimeMinutes(payload.content);
 
-    return prisma.post.create({
+    return this.deps.prisma.post.create({
       data: {
         site_id,
         title: payload.title,
@@ -201,22 +231,21 @@ export class CmsService {
   }
 
   async updatePost(id: string, site_id: string, payload: any, editorId: string) {
-    const existing = await prisma.post.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.post.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Artikel tidak ditemukan." };
+      throw AppError.notFound("Artikel tidak ditemukan.");
     }
 
     if (payload.categoryId !== undefined) {
-      const category = await prisma.category.findFirst({
+      const category = await this.deps.prisma.category.findFirst({
         where: { id: payload.categoryId, site_id },
         select: { id: true },
       });
       if (!category) {
-        throw {
-          statusCode: 400,
-          code: "INVALID_CATEGORY",
-          message: "Kategori yang dipilih tidak valid untuk situs ini.",
-        };
+        throw AppError.badRequest(
+          "INVALID_CATEGORY",
+          "Kategori yang dipilih tidak valid untuk situs ini."
+        );
       }
     }
 
@@ -242,7 +271,7 @@ export class CmsService {
     if (payload.seoTitle !== undefined) data.seoTitle = payload.seoTitle;
     if (payload.seoDescription !== undefined) data.seoDescription = payload.seoDescription;
 
-    const updated = await prisma.post.update({
+    const updated = await this.deps.prisma.post.update({
       where: { id: existing.id },
       data,
       include: {
@@ -260,15 +289,15 @@ export class CmsService {
   }
 
   async publishPost(id: string, site_id: string, editorId: string) {
-    const post = await prisma.post.findFirst({ where: { id, site_id } });
+    const post = await this.deps.prisma.post.findFirst({ where: { id, site_id } });
     if (!post) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Artikel tidak ditemukan." };
+      throw AppError.notFound("Artikel tidak ditemukan.");
     }
 
     const nextVersion = await this.nextSnapshotVersion(site_id, "POST", post.id);
 
-    const [, updatedPost] = await prisma.$transaction([
-      prisma.contentSnapshot.create({
+    const [, updatedPost] = await this.deps.prisma.$transaction([
+      this.deps.prisma.contentSnapshot.create({
         data: {
           site_id: post.site_id,
           entityType: "POST",
@@ -279,7 +308,7 @@ export class CmsService {
           savedById: editorId,
         },
       }),
-      prisma.post.update({
+      this.deps.prisma.post.update({
         where: { id: post.id },
         data: {
           status: "PUBLISHED",
@@ -291,7 +320,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id: post.site_id,
           actorId: editorId,
@@ -310,13 +339,13 @@ export class CmsService {
   }
 
   async archivePost(id: string, site_id: string, editorId: string) {
-    const existing = await prisma.post.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.post.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Artikel tidak ditemukan." };
+      throw AppError.notFound("Artikel tidak ditemukan.");
     }
 
-    const [post] = await prisma.$transaction([
-      prisma.post.update({
+    const [post] = await this.deps.prisma.$transaction([
+      this.deps.prisma.post.update({
         where: { id: existing.id },
         data: {
           status: "ARCHIVED",
@@ -327,7 +356,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: editorId,
@@ -354,7 +383,7 @@ export class CmsService {
     const { site_id, status, page, limit, search } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { site_id };
+    const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
       where.status = status;
     }
@@ -367,9 +396,9 @@ export class CmsService {
     }
 
     const [total, items] = await Promise.all([
-      prisma.portfolio.count({ where }),
-      prisma.portfolio.findMany({
-        where,
+      this.deps.prisma.portfolio.count({ where: where as any }),
+      this.deps.prisma.portfolio.findMany({
+        where: where as any,
         skip,
         take: limit,
         orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
@@ -390,7 +419,7 @@ export class CmsService {
   }
 
   async getPortfolioById(id: string, site_id: string) {
-    return prisma.portfolio.findFirst({
+    return this.deps.prisma.portfolio.findFirst({
       where: { id, site_id },
       include: {
         lastEditor: { select: { id: true, fullName: true } },
@@ -399,7 +428,7 @@ export class CmsService {
   }
 
   async createPortfolio(site_id: string, payload: any, editorId: string) {
-    return prisma.portfolio.create({
+    return this.deps.prisma.portfolio.create({
       data: {
         site_id,
         title: payload.title,
@@ -426,9 +455,9 @@ export class CmsService {
   }
 
   async updatePortfolio(id: string, site_id: string, payload: any, editorId: string) {
-    const existing = await prisma.portfolio.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.portfolio.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Portofolio tidak ditemukan." };
+      throw AppError.notFound("Portofolio tidak ditemukan.");
     }
 
     const data: Record<string, any> = {
@@ -450,7 +479,7 @@ export class CmsService {
     if (payload.isFeatured !== undefined) data.isFeatured = payload.isFeatured;
     if (payload.sortOrder !== undefined) data.sortOrder = payload.sortOrder;
 
-    const updated = await prisma.portfolio.update({
+    const updated = await this.deps.prisma.portfolio.update({
       where: { id: existing.id },
       data,
       include: {
@@ -466,15 +495,15 @@ export class CmsService {
   }
 
   async publishPortfolio(id: string, site_id: string, editorId: string) {
-    const portfolio = await prisma.portfolio.findFirst({ where: { id, site_id } });
+    const portfolio = await this.deps.prisma.portfolio.findFirst({ where: { id, site_id } });
     if (!portfolio) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Portofolio tidak ditemukan." };
+      throw AppError.notFound("Portofolio tidak ditemukan.");
     }
 
     const nextVersion = await this.nextSnapshotVersion(site_id, "PORTFOLIO", portfolio.id);
 
-    const [, updated] = await prisma.$transaction([
-      prisma.contentSnapshot.create({
+    const [, updated] = await this.deps.prisma.$transaction([
+      this.deps.prisma.contentSnapshot.create({
         data: {
           site_id: portfolio.site_id,
           entityType: "PORTFOLIO",
@@ -485,7 +514,7 @@ export class CmsService {
           savedById: editorId,
         },
       }),
-      prisma.portfolio.update({
+      this.deps.prisma.portfolio.update({
         where: { id: portfolio.id },
         data: {
           status: "PUBLISHED",
@@ -496,7 +525,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id: portfolio.site_id,
           actorId: editorId,
@@ -514,13 +543,13 @@ export class CmsService {
   }
 
   async archivePortfolio(id: string, site_id: string, editorId: string) {
-    const existing = await prisma.portfolio.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.portfolio.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Portofolio tidak ditemukan." };
+      throw AppError.notFound("Portofolio tidak ditemukan.");
     }
 
-    const [portfolio] = await prisma.$transaction([
-      prisma.portfolio.update({
+    const [portfolio] = await this.deps.prisma.$transaction([
+      this.deps.prisma.portfolio.update({
         where: { id: existing.id },
         data: {
           status: "ARCHIVED",
@@ -530,7 +559,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: editorId,
@@ -548,12 +577,12 @@ export class CmsService {
 
   // Services & Pricing
   async getServices(site_id: string, status?: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
-    const where: any = { site_id };
+    const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
       where.status = status;
     }
-    return prisma.service.findMany({
-      where,
+    return this.deps.prisma.service.findMany({
+      where: where as any,
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
       include: {
         lastEditor: { select: { id: true, fullName: true } },
@@ -562,7 +591,7 @@ export class CmsService {
   }
 
   async getServiceById(id: string, site_id: string) {
-    return prisma.service.findFirst({
+    return this.deps.prisma.service.findFirst({
       where: { id, site_id },
       include: {
         lastEditor: { select: { id: true, fullName: true } },
@@ -571,7 +600,7 @@ export class CmsService {
   }
 
   async createService(site_id: string, payload: any, editorId: string) {
-    return prisma.service.create({
+    return this.deps.prisma.service.create({
       data: {
         site_id,
         title: payload.title,
@@ -595,9 +624,9 @@ export class CmsService {
   }
 
   async updateService(id: string, site_id: string, payload: any, editorId: string) {
-    const existing = await prisma.service.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.service.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Layanan tidak ditemukan." };
+      throw AppError.notFound("Layanan tidak ditemukan.");
     }
 
     const data: Record<string, any> = {
@@ -616,7 +645,7 @@ export class CmsService {
     if (payload.ctaHref !== undefined) data.ctaHref = payload.ctaHref;
     if (payload.sortOrder !== undefined) data.sortOrder = payload.sortOrder;
 
-    const updated = await prisma.service.update({
+    const updated = await this.deps.prisma.service.update({
       where: { id: existing.id },
       data,
       include: {
@@ -632,15 +661,15 @@ export class CmsService {
   }
 
   async publishService(id: string, site_id: string, editorId: string) {
-    const service = await prisma.service.findFirst({ where: { id, site_id } });
+    const service = await this.deps.prisma.service.findFirst({ where: { id, site_id } });
     if (!service) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Layanan tidak ditemukan." };
+      throw AppError.notFound("Layanan tidak ditemukan.");
     }
 
     const nextVersion = await this.nextSnapshotVersion(site_id, "SERVICE", service.id);
 
-    const [, updated] = await prisma.$transaction([
-      prisma.contentSnapshot.create({
+    const [, updated] = await this.deps.prisma.$transaction([
+      this.deps.prisma.contentSnapshot.create({
         data: {
           site_id: service.site_id,
           entityType: "SERVICE",
@@ -651,7 +680,7 @@ export class CmsService {
           savedById: editorId,
         },
       }),
-      prisma.service.update({
+      this.deps.prisma.service.update({
         where: { id: service.id },
         data: {
           status: "PUBLISHED",
@@ -661,7 +690,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id: service.site_id,
           actorId: editorId,
@@ -679,13 +708,13 @@ export class CmsService {
   }
 
   async archiveService(id: string, site_id: string, editorId: string) {
-    const existing = await prisma.service.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.service.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Layanan tidak ditemukan." };
+      throw AppError.notFound("Layanan tidak ditemukan.");
     }
 
-    const [service] = await prisma.$transaction([
-      prisma.service.update({
+    const [service] = await this.deps.prisma.$transaction([
+      this.deps.prisma.service.update({
         where: { id: existing.id },
         data: {
           status: "ARCHIVED",
@@ -695,7 +724,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: editorId,
@@ -713,12 +742,12 @@ export class CmsService {
 
   // Pages
   async getPages(site_id: string, status?: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
-    const where: any = { site_id };
+    const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
       where.status = status;
     }
-    return prisma.page.findMany({
-      where,
+    return this.deps.prisma.page.findMany({
+      where: where as any,
       orderBy: { updatedAt: "desc" },
       include: {
         lastEditor: { select: { id: true, fullName: true } },
@@ -727,7 +756,7 @@ export class CmsService {
   }
 
   async getPageById(id: string, site_id: string) {
-    return prisma.page.findFirst({
+    return this.deps.prisma.page.findFirst({
       where: { id, site_id },
       include: {
         lastEditor: { select: { id: true, fullName: true } },
@@ -736,7 +765,7 @@ export class CmsService {
   }
 
   async createPage(site_id: string, payload: any, editorId: string) {
-    return prisma.page.create({
+    return this.deps.prisma.page.create({
       data: {
         site_id,
         title: payload.title,
@@ -754,9 +783,9 @@ export class CmsService {
   }
 
   async updatePage(id: string, site_id: string, payload: any, editorId: string) {
-    const existing = await prisma.page.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.page.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Halaman tidak ditemukan." };
+      throw AppError.notFound("Halaman tidak ditemukan.");
     }
 
     const data: Record<string, any> = {
@@ -769,7 +798,7 @@ export class CmsService {
     if (payload.seoTitle !== undefined) data.seoTitle = payload.seoTitle;
     if (payload.seoDescription !== undefined) data.seoDescription = payload.seoDescription;
 
-    const updated = await prisma.page.update({
+    const updated = await this.deps.prisma.page.update({
       where: { id: existing.id },
       data,
       include: {
@@ -785,15 +814,15 @@ export class CmsService {
   }
 
   async publishPage(id: string, site_id: string, editorId: string) {
-    const page = await prisma.page.findFirst({ where: { id, site_id } });
+    const page = await this.deps.prisma.page.findFirst({ where: { id, site_id } });
     if (!page) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Halaman tidak ditemukan." };
+      throw AppError.notFound("Halaman tidak ditemukan.");
     }
 
     const nextVersion = await this.nextSnapshotVersion(site_id, "PAGE", page.id);
 
-    const [, updated] = await prisma.$transaction([
-      prisma.contentSnapshot.create({
+    const [, updated] = await this.deps.prisma.$transaction([
+      this.deps.prisma.contentSnapshot.create({
         data: {
           site_id: page.site_id,
           entityType: "PAGE",
@@ -804,7 +833,7 @@ export class CmsService {
           savedById: editorId,
         },
       }),
-      prisma.page.update({
+      this.deps.prisma.page.update({
         where: { id: page.id },
         data: {
           status: "PUBLISHED",
@@ -814,7 +843,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id: page.site_id,
           actorId: editorId,
@@ -832,13 +861,13 @@ export class CmsService {
   }
 
   async archivePage(id: string, site_id: string, editorId: string) {
-    const existing = await prisma.page.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.page.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Halaman tidak ditemukan." };
+      throw AppError.notFound("Halaman tidak ditemukan.");
     }
 
-    const [page] = await prisma.$transaction([
-      prisma.page.update({
+    const [page] = await this.deps.prisma.$transaction([
+      this.deps.prisma.page.update({
         where: { id: existing.id },
         data: {
           status: "ARCHIVED",
@@ -848,7 +877,7 @@ export class CmsService {
           lastEditor: { select: { id: true, fullName: true } },
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: editorId,
@@ -866,7 +895,7 @@ export class CmsService {
 
   // FAQs (Boolean isActive toggle without publish/archive)
   async getFaqs(site_id: string) {
-    return prisma.faq.findMany({
+    return this.deps.prisma.faq.findMany({
       where: { site_id },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
       include: {
@@ -876,7 +905,7 @@ export class CmsService {
   }
 
   async getFaqById(id: string, site_id: string) {
-    return prisma.faq.findFirst({
+    return this.deps.prisma.faq.findFirst({
       where: { id, site_id },
       include: {
         lastEditor: { select: { id: true, fullName: true } },
@@ -885,7 +914,7 @@ export class CmsService {
   }
 
   async createFaq(site_id: string, payload: any, editorId: string) {
-    const created = await prisma.faq.create({
+    const created = await this.deps.prisma.faq.create({
       data: {
         site_id,
         question: payload.question,
@@ -905,9 +934,9 @@ export class CmsService {
   }
 
   async updateFaq(id: string, site_id: string, payload: any, editorId: string) {
-    const existing = await prisma.faq.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.faq.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "FAQ tidak ditemukan." };
+      throw AppError.notFound("FAQ tidak ditemukan.");
     }
 
     const data: Record<string, any> = {
@@ -920,7 +949,7 @@ export class CmsService {
     if (payload.sortOrder !== undefined) data.sortOrder = payload.sortOrder;
     if (payload.isActive !== undefined) data.isActive = Boolean(payload.isActive);
 
-    const updated = await prisma.faq.update({
+    const updated = await this.deps.prisma.faq.update({
       where: { id: existing.id },
       data,
       include: {
@@ -933,12 +962,12 @@ export class CmsService {
   }
 
   async deleteFaq(id: string, site_id: string, editorId: string) {
-    const existing = await prisma.faq.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.faq.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "FAQ tidak ditemukan." };
+      throw AppError.notFound("FAQ tidak ditemukan.");
     }
 
-    const updated = await prisma.faq.update({
+    const updated = await this.deps.prisma.faq.update({
       where: { id: existing.id },
       data: {
         isActive: false,
@@ -955,12 +984,12 @@ export class CmsService {
 
   // Testimonials
   async getTestimonials(site_id: string, status?: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
-    const where: any = { site_id };
+    const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
       where.status = status;
     }
-    return prisma.testimonial.findMany({
-      where,
+    return this.deps.prisma.testimonial.findMany({
+      where: where as any,
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
       include: {
         portfolio: { select: { id: true, title: true, slug: true } },
@@ -970,7 +999,7 @@ export class CmsService {
   }
 
   async getTestimonialById(id: string, site_id: string) {
-    return prisma.testimonial.findFirst({
+    return this.deps.prisma.testimonial.findFirst({
       where: { id, site_id },
       include: {
         portfolio: { select: { id: true, title: true, slug: true } },
@@ -981,20 +1010,19 @@ export class CmsService {
 
   async createTestimonial(site_id: string, payload: any, editorId: string) {
     if (payload.portfolioId) {
-      const portfolio = await prisma.portfolio.findFirst({
+      const portfolio = await this.deps.prisma.portfolio.findFirst({
         where: { id: payload.portfolioId, site_id },
         select: { id: true },
       });
       if (!portfolio) {
-        throw {
-          statusCode: 400,
-          code: "INVALID_PORTFOLIO",
-          message: "Portofolio referensi tidak ditemukan pada situs ini.",
-        };
+        throw AppError.badRequest(
+          "INVALID_PORTFOLIO",
+          "Portofolio referensi tidak ditemukan pada situs ini."
+        );
       }
     }
 
-    const created = await prisma.testimonial.create({
+    const created = await this.deps.prisma.testimonial.create({
       data: {
         site_id,
         clientName: payload.clientName,
@@ -1019,22 +1047,21 @@ export class CmsService {
   }
 
   async updateTestimonial(id: string, site_id: string, payload: any, editorId: string) {
-    const existing = await prisma.testimonial.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.testimonial.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Testimoni tidak ditemukan." };
+      throw AppError.notFound("Testimoni tidak ditemukan.");
     }
 
     if (payload.portfolioId) {
-      const portfolio = await prisma.portfolio.findFirst({
+      const portfolio = await this.deps.prisma.portfolio.findFirst({
         where: { id: payload.portfolioId, site_id },
         select: { id: true },
       });
       if (!portfolio) {
-        throw {
-          statusCode: 400,
-          code: "INVALID_PORTFOLIO",
-          message: "Portofolio referensi tidak ditemukan pada situs ini.",
-        };
+        throw AppError.badRequest(
+          "INVALID_PORTFOLIO",
+          "Portofolio referensi tidak ditemukan pada situs ini."
+        );
       }
     }
 
@@ -1052,7 +1079,7 @@ export class CmsService {
     if (payload.sortOrder !== undefined) data.sortOrder = payload.sortOrder;
     if (payload.status !== undefined) data.status = payload.status;
 
-    const updated = await prisma.testimonial.update({
+    const updated = await this.deps.prisma.testimonial.update({
       where: { id: existing.id },
       data,
       include: {
@@ -1066,12 +1093,12 @@ export class CmsService {
   }
 
   async archiveTestimonial(id: string, site_id: string, editorId: string) {
-    const existing = await prisma.testimonial.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.testimonial.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Testimoni tidak ditemukan." };
+      throw AppError.notFound("Testimoni tidak ditemukan.");
     }
 
-    const updated = await prisma.testimonial.update({
+    const updated = await this.deps.prisma.testimonial.update({
       where: { id: existing.id },
       data: {
         status: "ARCHIVED",
@@ -1094,12 +1121,12 @@ export class CmsService {
     entityId?: string;
   }) {
     const { site_id, entityType, entityId } = query;
-    const where: any = { site_id };
+    const where: Record<string, unknown> = { site_id };
     if (entityType) where.entityType = entityType.toUpperCase();
     if (entityId) where.entityId = entityId;
 
-    return prisma.contentSnapshot.findMany({
-      where,
+    return this.deps.prisma.contentSnapshot.findMany({
+      where: where as any,
       take: 25,
       orderBy: [{ createdAt: "desc" }, { version: "desc" }],
       include: {
@@ -1109,24 +1136,36 @@ export class CmsService {
   }
 
   async restoreSnapshot(snapshotId: string, site_id: string, editorId: string) {
-    const snapshot = await prisma.contentSnapshot.findFirst({
+    const snapshot = await this.deps.prisma.contentSnapshot.findFirst({
       where: { id: snapshotId, site_id },
     });
 
     if (!snapshot) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Snapshot tidak ditemukan." };
+      throw AppError.notFound("Snapshot tidak ditemukan.");
     }
 
     const data = snapshot.snapshotPayload as any;
 
     if (snapshot.entityType === "POST") {
-      const target = await prisma.post.findFirst({
+      const target = await this.deps.prisma.post.findFirst({
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw { statusCode: 404, code: "NOT_FOUND", message: "Artikel induk tidak ditemukan." };
+        throw AppError.notFound("Artikel induk tidak ditemukan.");
       }
-      await prisma.post.update({
+
+      let resolvedCategoryId = target.categoryId;
+      if (data.categoryId) {
+        const validCategory = await this.deps.prisma.category.findFirst({
+          where: { id: data.categoryId, site_id },
+          select: { id: true },
+        });
+        if (validCategory) {
+          resolvedCategoryId = validCategory.id;
+        }
+      }
+
+      await this.deps.prisma.post.update({
         where: { id: target.id },
         data: {
           title: data.title ?? target.title,
@@ -1134,7 +1173,7 @@ export class CmsService {
           content: data.content ?? target.content,
           coverUrl: data.coverUrl ?? target.coverUrl,
           coverAlt: data.coverAlt ?? target.coverAlt,
-          categoryId: data.categoryId ?? target.categoryId,
+          categoryId: resolvedCategoryId,
           tags: Array.isArray(data.tags) ? data.tags : target.tags,
           seoTitle: data.seoTitle ?? target.seoTitle,
           seoDescription: data.seoDescription ?? target.seoDescription,
@@ -1143,13 +1182,13 @@ export class CmsService {
       });
       await this.invalidateCmsCache(site_id, "articles");
     } else if (snapshot.entityType === "PORTFOLIO") {
-      const target = await prisma.portfolio.findFirst({
+      const target = await this.deps.prisma.portfolio.findFirst({
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw { statusCode: 404, code: "NOT_FOUND", message: "Portofolio induk tidak ditemukan." };
+        throw AppError.notFound("Portofolio induk tidak ditemukan.");
       }
-      await prisma.portfolio.update({
+      await this.deps.prisma.portfolio.update({
         where: { id: target.id },
         data: {
           title: data.title ?? target.title,
@@ -1169,13 +1208,13 @@ export class CmsService {
       });
       await this.invalidateCmsCache(site_id, "portfolios");
     } else if (snapshot.entityType === "SERVICE") {
-      const target = await prisma.service.findFirst({
+      const target = await this.deps.prisma.service.findFirst({
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw { statusCode: 404, code: "NOT_FOUND", message: "Layanan induk tidak ditemukan." };
+        throw AppError.notFound("Layanan induk tidak ditemukan.");
       }
-      await prisma.service.update({
+      await this.deps.prisma.service.update({
         where: { id: target.id },
         data: {
           title: data.title ?? target.title,
@@ -1193,13 +1232,13 @@ export class CmsService {
       });
       await this.invalidateCmsCache(site_id, "services");
     } else if (snapshot.entityType === "PAGE") {
-      const target = await prisma.page.findFirst({
+      const target = await this.deps.prisma.page.findFirst({
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw { statusCode: 404, code: "NOT_FOUND", message: "Halaman induk tidak ditemukan." };
+        throw AppError.notFound("Halaman induk tidak ditemukan.");
       }
-      await prisma.page.update({
+      await this.deps.prisma.page.update({
         where: { id: target.id },
         data: {
           title: data.title ?? target.title,
@@ -1211,14 +1250,13 @@ export class CmsService {
       });
       await this.invalidateCmsCache(site_id, "pages");
     } else {
-      throw {
-        statusCode: 400,
-        code: "UNSUPPORTED_SNAPSHOT_ENTITY",
-        message: "Tipe entitas snapshot tidak didukung.",
-      };
+      throw AppError.badRequest(
+        "UNSUPPORTED_SNAPSHOT_ENTITY",
+        "Tipe entitas snapshot tidak didukung."
+      );
     }
 
-    await prisma.activityLog.create({
+    await this.deps.prisma.activityLog.create({
       data: {
         site_id,
         actorId: editorId,
@@ -1240,7 +1278,7 @@ export class CmsService {
 
   // Redirects
   async getRedirects(site_id: string) {
-    return prisma.redirect.findMany({
+    return this.deps.prisma.redirect.findMany({
       where: { site_id },
       orderBy: { createdAt: "desc" },
     });
@@ -1250,7 +1288,14 @@ export class CmsService {
     site_id: string,
     payload: { sourcePath: string; targetPath: string; statusCode?: number }
   ) {
-    return prisma.redirect.create({
+    if (payload.sourcePath === payload.targetPath) {
+      throw AppError.badRequest(
+        "REDIRECT_LOOP",
+        "URL sumber dan tujuan redirect tidak boleh sama."
+      );
+    }
+
+    return this.deps.prisma.redirect.create({
       data: {
         site_id,
         sourcePath: payload.sourcePath,
@@ -1261,17 +1306,17 @@ export class CmsService {
   }
 
   async deleteRedirect(id: string, site_id: string) {
-    const existing = await prisma.redirect.findFirst({ where: { id, site_id } });
+    const existing = await this.deps.prisma.redirect.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Aturan redirect tidak ditemukan." };
+      throw AppError.notFound("Aturan redirect tidak ditemukan.");
     }
-    await prisma.redirect.delete({ where: { id: existing.id } });
+    await this.deps.prisma.redirect.delete({ where: { id: existing.id } });
     return { message: "Aturan redirect berhasil dihapus." };
   }
 
   private async pruneSnapshots(site_id: string, entityType: string, entityId: string) {
     try {
-      const snapshots = await prisma.contentSnapshot.findMany({
+      const snapshots = await this.deps.prisma.contentSnapshot.findMany({
         where: { site_id, entityType, entityId },
         orderBy: [{ createdAt: "desc" }, { version: "desc" }],
         select: { id: true },
@@ -1279,12 +1324,14 @@ export class CmsService {
 
       if (snapshots.length > 5) {
         const toDelete = snapshots.slice(5).map((s) => s.id);
-        await prisma.contentSnapshot.deleteMany({
+        await this.deps.prisma.contentSnapshot.deleteMany({
           where: { id: { in: toDelete }, site_id },
         });
       }
     } catch (err: any) {
-      console.warn("[Snapshot Prune Warning]", err.message);
+      this.deps.logger.warn("[Snapshot Prune Warning]", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
