@@ -1,14 +1,34 @@
-import { prisma } from "../config/prisma";
-import { triggerRevalidationWebhook } from "../utils/webhook";
-import { resolveAuthorizedSiteId } from "../utils/optimistic";
+import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../config/prisma";
+import { ITenantGuard, IWebhookNotifier } from "../container/types";
+import { AppError } from "../core/AppError";
+import { defaultLogger, ILogger } from "../core/logger";
+import { defaultTenantGuard } from "../utils/optimistic";
+import { defaultWebhookNotifier } from "../utils/webhook";
+
+export interface EmergencyServiceDeps {
+  prisma: PrismaClient;
+  tenantGuard: ITenantGuard;
+  webhook: IWebhookNotifier;
+  logger: ILogger;
+}
 
 export class EmergencyService {
+  constructor(
+    private readonly deps: EmergencyServiceDeps = {
+      prisma: defaultPrisma,
+      tenantGuard: defaultTenantGuard,
+      webhook: defaultWebhookNotifier,
+      logger: defaultLogger,
+    }
+  ) {}
+
   async getEmergencyOverview(rawSiteId?: string, limit = 30) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
 
     const [site, emergencyLogs, activityLogs] = await Promise.all([
-      prisma.site.findUnique({
+      this.deps.prisma.site.findUnique({
         where: { id: site_id },
         select: {
           id: true,
@@ -21,20 +41,24 @@ export class EmergencyService {
           updatedAt: true,
         },
       }),
-      prisma.emergencyAuditLog.findMany({
+      this.deps.prisma.emergencyAuditLog.findMany({
         where: { site_id },
         orderBy: { createdAt: "desc" },
         take: safeLimit,
         include: {
-          actor: { select: { id: true, fullName: true, email: true, jobTitle: true } },
+          actor: {
+            select: { id: true, fullName: true, email: true, jobTitle: true },
+          },
         },
       }),
-      prisma.activityLog.findMany({
+      this.deps.prisma.activityLog.findMany({
         where: { site_id },
         orderBy: { createdAt: "desc" },
         take: safeLimit,
         include: {
-          actor: { select: { id: true, fullName: true, email: true, jobTitle: true } },
+          actor: {
+            select: { id: true, fullName: true, email: true, jobTitle: true },
+          },
         },
       }),
     ]);
@@ -53,56 +77,64 @@ export class EmergencyService {
     reason: string;
     executedById: string;
   }) {
-    const site_id = resolveAuthorizedSiteId(payload.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
     const { targetEntity, targetId, reason, executedById } = payload;
 
     let previousStatus = "PUBLISHED";
     let targetTitle = targetId;
 
     if (targetEntity === "POST") {
-      const existing = await prisma.post.findFirst({ where: { id: targetId, site_id } });
-      if (!existing) throw { statusCode: 404, code: "NOT_FOUND", message: "Artikel tidak ditemukan." };
+      const existing = await this.deps.prisma.post.findFirst({
+        where: { id: targetId, site_id },
+      });
+      if (!existing) throw AppError.notFound("Artikel tidak ditemukan.");
       previousStatus = existing.status;
       targetTitle = existing.title;
-      await prisma.post.update({
+      await this.deps.prisma.post.update({
         where: { id: existing.id },
         data: { status: "DRAFT", lastEditedById: executedById },
       });
-      triggerRevalidationWebhook("articles").catch(console.error);
+      this.deps.webhook.triggerRevalidation("articles").catch(() => {});
     } else if (targetEntity === "PORTFOLIO") {
-      const existing = await prisma.portfolio.findFirst({ where: { id: targetId, site_id } });
-      if (!existing) throw { statusCode: 404, code: "NOT_FOUND", message: "Portofolio tidak ditemukan." };
+      const existing = await this.deps.prisma.portfolio.findFirst({
+        where: { id: targetId, site_id },
+      });
+      if (!existing) throw AppError.notFound("Portofolio tidak ditemukan.");
       previousStatus = existing.status;
       targetTitle = existing.title;
-      await prisma.portfolio.update({
+      await this.deps.prisma.portfolio.update({
         where: { id: existing.id },
         data: { status: "DRAFT", lastEditedById: executedById },
       });
-      triggerRevalidationWebhook("portfolios").catch(console.error);
+      this.deps.webhook.triggerRevalidation("portfolios").catch(() => {});
     } else if (targetEntity === "SERVICE") {
-      const existing = await prisma.service.findFirst({ where: { id: targetId, site_id } });
-      if (!existing) throw { statusCode: 404, code: "NOT_FOUND", message: "Layanan tidak ditemukan." };
+      const existing = await this.deps.prisma.service.findFirst({
+        where: { id: targetId, site_id },
+      });
+      if (!existing) throw AppError.notFound("Layanan tidak ditemukan.");
       previousStatus = existing.status;
       targetTitle = existing.title;
-      await prisma.service.update({
+      await this.deps.prisma.service.update({
         where: { id: existing.id },
         data: { status: "DRAFT", lastEditedById: executedById },
       });
-      triggerRevalidationWebhook("services").catch(console.error);
+      this.deps.webhook.triggerRevalidation("services").catch(() => {});
     } else if (targetEntity === "PAGE") {
-      const existing = await prisma.page.findFirst({ where: { id: targetId, site_id } });
-      if (!existing) throw { statusCode: 404, code: "NOT_FOUND", message: "Halaman tidak ditemukan." };
+      const existing = await this.deps.prisma.page.findFirst({
+        where: { id: targetId, site_id },
+      });
+      if (!existing) throw AppError.notFound("Halaman tidak ditemukan.");
       previousStatus = existing.status;
       targetTitle = existing.title;
-      await prisma.page.update({
+      await this.deps.prisma.page.update({
         where: { id: existing.id },
         data: { status: "DRAFT", lastEditedById: executedById },
       });
-      triggerRevalidationWebhook("pages").catch(console.error);
+      this.deps.webhook.triggerRevalidation("pages").catch(() => {});
     }
 
-    const [auditLog] = await prisma.$transaction([
-      prisma.emergencyAuditLog.create({
+    const [auditLog] = await this.deps.prisma.$transaction([
+      this.deps.prisma.emergencyAuditLog.create({
         data: {
           site_id,
           actionType: "UNPUBLISH_CONTENT",
@@ -113,7 +145,7 @@ export class EmergencyService {
           actorId: executedById,
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: executedById,
@@ -125,6 +157,14 @@ export class EmergencyService {
       }),
     ]);
 
+    this.deps.logger.security("EMERGENCY_UNPUBLISH_CONTENT", {
+      site_id,
+      targetEntity,
+      targetId,
+      executedById,
+      reason,
+    });
+
     return {
       message: "Konten berhasil diturunkan darurat ke status DRAFT.",
       auditLogId: auditLog.id,
@@ -133,16 +173,20 @@ export class EmergencyService {
     };
   }
 
-  async lockContactForm(payload: { site_id?: string; reason: string; executedById: string }) {
-    const site_id = resolveAuthorizedSiteId(payload.site_id);
+  async lockContactForm(payload: {
+    site_id?: string;
+    reason: string;
+    executedById: string;
+  }) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
     const { reason, executedById } = payload;
 
-    const [, auditLog] = await prisma.$transaction([
-      prisma.site.update({
+    const [, auditLog] = await this.deps.prisma.$transaction([
+      this.deps.prisma.site.update({
         where: { id: site_id },
         data: { isFormLocked: true },
       }),
-      prisma.emergencyAuditLog.create({
+      this.deps.prisma.emergencyAuditLog.create({
         data: {
           site_id,
           actionType: "LOCK_CONTACT_FORM",
@@ -153,7 +197,7 @@ export class EmergencyService {
           actorId: executedById,
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: executedById,
@@ -165,7 +209,12 @@ export class EmergencyService {
       }),
     ]);
 
-    triggerRevalidationWebhook("site").catch(console.error);
+    this.deps.webhook.triggerRevalidation("site").catch(() => {});
+    this.deps.logger.security("EMERGENCY_LOCK_CONTACT_FORM", {
+      site_id,
+      executedById,
+      reason,
+    });
 
     return {
       message: "Formulir kontak publik berhasil dikunci secara darurat.",
@@ -175,16 +224,20 @@ export class EmergencyService {
     };
   }
 
-  async unlockContactForm(payload: { site_id?: string; reason: string; executedById: string }) {
-    const site_id = resolveAuthorizedSiteId(payload.site_id);
+  async unlockContactForm(payload: {
+    site_id?: string;
+    reason: string;
+    executedById: string;
+  }) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
     const { reason, executedById } = payload;
 
-    const [, auditLog] = await prisma.$transaction([
-      prisma.site.update({
+    const [, auditLog] = await this.deps.prisma.$transaction([
+      this.deps.prisma.site.update({
         where: { id: site_id },
         data: { isFormLocked: false },
       }),
-      prisma.emergencyAuditLog.create({
+      this.deps.prisma.emergencyAuditLog.create({
         data: {
           site_id,
           actionType: "UNLOCK_CONTACT_FORM",
@@ -195,7 +248,7 @@ export class EmergencyService {
           actorId: executedById,
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: executedById,
@@ -207,7 +260,12 @@ export class EmergencyService {
       }),
     ]);
 
-    triggerRevalidationWebhook("site").catch(console.error);
+    this.deps.webhook.triggerRevalidation("site").catch(() => {});
+    this.deps.logger.security("EMERGENCY_UNLOCK_CONTACT_FORM", {
+      site_id,
+      executedById,
+      reason,
+    });
 
     return {
       message: "Formulir kontak publik berhasil dibuka kembali.",
@@ -224,20 +282,20 @@ export class EmergencyService {
     reason: string;
     executedById: string;
   }) {
-    const site_id = resolveAuthorizedSiteId(payload.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
     const { isActive, alertBanner, reason, executedById } = payload;
     const cleanBanner = isActive && alertBanner ? alertBanner.trim() : null;
     const actionType = isActive ? "SET_ALERT_BANNER" : "REMOVE_ALERT_BANNER";
 
-    const [, auditLog] = await prisma.$transaction([
-      prisma.site.update({
+    const [, auditLog] = await this.deps.prisma.$transaction([
+      this.deps.prisma.site.update({
         where: { id: site_id },
         data: {
           isAlertActive: isActive,
           alertBanner: cleanBanner,
         },
       }),
-      prisma.emergencyAuditLog.create({
+      this.deps.prisma.emergencyAuditLog.create({
         data: {
           site_id,
           actionType,
@@ -248,7 +306,7 @@ export class EmergencyService {
           actorId: executedById,
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: executedById,
@@ -262,7 +320,7 @@ export class EmergencyService {
       }),
     ]);
 
-    triggerRevalidationWebhook("site").catch(console.error);
+    this.deps.webhook.triggerRevalidation("site").catch(() => {});
 
     return {
       message: isActive
@@ -276,27 +334,36 @@ export class EmergencyService {
 
   async reassignLead(
     leadId: string,
-    payload: { site_id?: string; newAssignedToId: string; reason: string; executedById: string }
+    payload: {
+      site_id?: string;
+      newAssignedToId: string;
+      reason: string;
+      executedById: string;
+    }
   ) {
-    const site_id = resolveAuthorizedSiteId(payload.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
     const { newAssignedToId, reason, executedById } = payload;
 
     const [lead, targetStaff] = await Promise.all([
-      prisma.lead.findFirst({ where: { id: leadId, site_id } }),
-      prisma.user.findFirst({ where: { id: newAssignedToId, isActive: true } }),
+      this.deps.prisma.lead.findFirst({ where: { id: leadId, site_id } }),
+      this.deps.prisma.user.findFirst({
+        where: { id: newAssignedToId, isActive: true },
+      }),
     ]);
 
-    if (!lead) throw { statusCode: 404, code: "NOT_FOUND", message: "Prospek tidak ditemukan." };
+    if (!lead) throw AppError.notFound("Prospek tidak ditemukan.");
     if (!targetStaff) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Staf tujuan tidak ditemukan atau tidak aktif." };
+      throw AppError.notFound(
+        "Staf tujuan tidak ditemukan atau tidak aktif."
+      );
     }
 
-    const [updatedLead, auditLog] = await prisma.$transaction([
-      prisma.lead.update({
+    const [updatedLead, auditLog] = await this.deps.prisma.$transaction([
+      this.deps.prisma.lead.update({
         where: { id: lead.id },
         data: { assignedToId: newAssignedToId },
       }),
-      prisma.emergencyAuditLog.create({
+      this.deps.prisma.emergencyAuditLog.create({
         data: {
           site_id: lead.site_id,
           actionType: "REASSIGN_STAFF",
@@ -307,7 +374,7 @@ export class EmergencyService {
           actorId: executedById,
         },
       }),
-      prisma.activityLog.create({
+      this.deps.prisma.activityLog.create({
         data: {
           site_id: lead.site_id,
           actorId: executedById,
@@ -318,6 +385,13 @@ export class EmergencyService {
         },
       }),
     ]);
+
+    this.deps.logger.security("EMERGENCY_REASSIGN_LEAD", {
+      leadId: lead.id,
+      newAssignedToId,
+      executedById,
+      reason,
+    });
 
     return {
       message: "Penanggung jawab prospek berhasil dialihkan secara darurat.",
