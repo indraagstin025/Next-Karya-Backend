@@ -1,12 +1,30 @@
 import crypto from "crypto";
-import { prisma } from "../config/prisma";
+import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../config/prisma";
+import { ITenantGuard } from "../container/types";
+import { AppError } from "../core/AppError";
+import { defaultLogger, ILogger } from "../core/logger";
+import { defaultTenantGuard } from "../utils/optimistic";
 import { PaginationMeta } from "../utils/response";
-import { resolveAuthorizedSiteId } from "../utils/optimistic";
+
+export interface PublicServiceDeps {
+  prisma: PrismaClient;
+  tenantGuard: ITenantGuard;
+  logger: ILogger;
+}
 
 export class PublicService {
+  constructor(
+    private readonly deps: PublicServiceDeps = {
+      prisma: defaultPrisma,
+      tenantGuard: defaultTenantGuard,
+      logger: defaultLogger,
+    }
+  ) {}
+
   async getSiteStatus(rawSiteId?: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    const site = await prisma.site.findUnique({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const site = await this.deps.prisma.site.findUnique({
       where: { id: site_id },
       select: {
         id: true,
@@ -34,8 +52,8 @@ export class PublicService {
   }
 
   async getCategories(rawSiteId?: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    return prisma.category.findMany({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    return this.deps.prisma.category.findMany({
       where: { site_id },
       orderBy: { name: "asc" },
       select: {
@@ -47,9 +65,9 @@ export class PublicService {
   }
 
   async lookupRedirect(rawSiteId: string | undefined, fromPath: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const normalizedPath = fromPath.startsWith("/") ? fromPath : `/${fromPath}`;
-    return prisma.redirect.findFirst({
+    return this.deps.prisma.redirect.findFirst({
       where: {
         site_id,
         sourcePath: normalizedPath,
@@ -71,7 +89,7 @@ export class PublicService {
     tag?: string;
     search?: string;
   }) {
-    const site_id = resolveAuthorizedSiteId(query.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(query.site_id);
     const { page, limit, category, tag, search } = query;
     const skip = (page - 1) * limit;
 
@@ -96,8 +114,8 @@ export class PublicService {
     }
 
     const [total, items] = await Promise.all([
-      prisma.post.count({ where }),
-      prisma.post.findMany({
+      this.deps.prisma.post.count({ where }),
+      this.deps.prisma.post.findMany({
         where,
         skip,
         take: limit,
@@ -142,8 +160,8 @@ export class PublicService {
   }
 
   async getArticleBySlug(rawSiteId: string | undefined, slug: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    const post = await prisma.post.findFirst({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const post = await this.deps.prisma.post.findFirst({
       where: {
         site_id,
         slug,
@@ -163,7 +181,7 @@ export class PublicService {
 
     let relatedPosts: { id: string; title: string; slug: string }[] = [];
     if (post.relatedPostIds && post.relatedPostIds.length > 0) {
-      relatedPosts = await prisma.post.findMany({
+      relatedPosts = await this.deps.prisma.post.findMany({
         where: {
           site_id,
           id: { in: post.relatedPostIds },
@@ -199,7 +217,7 @@ export class PublicService {
     page: number;
     limit: number;
   }) {
-    const site_id = resolveAuthorizedSiteId(query.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(query.site_id);
     const { isFeatured, page, limit } = query;
     const skip = (page - 1) * limit;
 
@@ -213,12 +231,16 @@ export class PublicService {
     }
 
     const [total, items] = await Promise.all([
-      prisma.portfolio.count({ where }),
-      prisma.portfolio.findMany({
+      this.deps.prisma.portfolio.count({ where }),
+      this.deps.prisma.portfolio.findMany({
         where,
         skip,
         take: limit,
-        orderBy: [{ isFeatured: "desc" }, { sortOrder: "asc" }, { publishedAt: "desc" }],
+        orderBy: [
+          { isFeatured: "desc" },
+          { sortOrder: "asc" },
+          { publishedAt: "desc" },
+        ],
         select: {
           id: true,
           site_id: true,
@@ -250,8 +272,8 @@ export class PublicService {
   }
 
   async getPortfolioBySlug(rawSiteId: string | undefined, slug: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    return prisma.portfolio.findFirst({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    return this.deps.prisma.portfolio.findFirst({
       where: {
         site_id,
         slug,
@@ -261,8 +283,8 @@ export class PublicService {
   }
 
   async getServices(rawSiteId?: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    return prisma.service.findMany({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    return this.deps.prisma.service.findMany({
       where: {
         site_id,
         status: "PUBLISHED",
@@ -287,7 +309,7 @@ export class PublicService {
   }
 
   async getFaqs(rawSiteId?: string, category?: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const where: any = {
       site_id,
       isActive: true,
@@ -297,7 +319,7 @@ export class PublicService {
       where.category = category;
     }
 
-    return prisma.faq.findMany({
+    return this.deps.prisma.faq.findMany({
       where,
       orderBy: { sortOrder: "asc" },
       select: {
@@ -311,8 +333,8 @@ export class PublicService {
   }
 
   async getTestimonials(rawSiteId?: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    return prisma.testimonial.findMany({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    return this.deps.prisma.testimonial.findMany({
       where: {
         site_id,
         status: "PUBLISHED",
@@ -337,8 +359,8 @@ export class PublicService {
   }
 
   async getPageBySlug(rawSiteId: string | undefined, slug: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    return prisma.page.findFirst({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    return this.deps.prisma.page.findFirst({
       where: {
         site_id,
         slug,
@@ -371,26 +393,25 @@ export class PublicService {
       return { trapped: true };
     }
 
-    const site_id = resolveAuthorizedSiteId(payload.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
 
-    const site = await prisma.site.findUnique({
+    const site = await this.deps.prisma.site.findUnique({
       where: { id: site_id },
       select: { id: true, isFormLocked: true },
     });
 
     if (!site) {
-      throw { statusCode: 404, code: "SITE_NOT_FOUND", message: "Situs tidak ditemukan." };
+      throw AppError.notFound("Situs tidak ditemukan.", "SITE_NOT_FOUND");
     }
 
     if (site.isFormLocked) {
-      throw {
-        statusCode: 403,
-        code: "FORM_LOCKED",
-        message: "Formulir konsultasi sedang dialihkan ke WhatsApp resmi.",
-      };
+      throw AppError.forbidden(
+        "FORM_LOCKED",
+        "Formulir konsultasi sedang dialihkan ke WhatsApp resmi."
+      );
     }
 
-    const lead = await prisma.lead.create({
+    const lead = await this.deps.prisma.lead.create({
       data: {
         site_id,
         clientName: payload.clientName,
@@ -403,13 +424,13 @@ export class PublicService {
       },
     });
 
-    const siteStaff = await prisma.user.findFirst({
+    const siteStaff = await this.deps.prisma.user.findFirst({
       where: { isActive: true },
       select: { id: true },
     });
 
     if (siteStaff) {
-      await prisma.activityLog.create({
+      await this.deps.prisma.activityLog.create({
         data: {
           site_id,
           actorId: siteStaff.id,
@@ -436,14 +457,14 @@ export class PublicService {
     os?: string | null;
     durationSec: number;
   }) {
-    const site_id = resolveAuthorizedSiteId(payload.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
     const visitorIdHash = crypto
       .createHash("sha256")
       .update(payload.sessionId + (payload.browser || ""))
       .digest("hex")
       .slice(0, 32);
 
-    prisma.analyticsEvent
+    this.deps.prisma.analyticsEvent
       .create({
         data: {
           site_id,
@@ -460,7 +481,9 @@ export class PublicService {
         },
       })
       .catch((err) => {
-        console.error("[Analytics Event Error]", err.message);
+        this.deps.logger.error("[Analytics Event Error]", {
+          error: err?.message,
+        });
       });
 
     return { status: "recorded" };
