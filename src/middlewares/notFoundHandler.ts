@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { sendError } from "../utils/response";
 
+/**
+ * Fallback middleware for unmatched HTTP routes, returning a standardized 404 JSON response.
+ */
 export function notFoundHandler(req: Request, res: Response) {
   return sendError(
     res,
