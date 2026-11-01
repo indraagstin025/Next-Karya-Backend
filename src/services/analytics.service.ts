@@ -71,6 +71,105 @@ export class AnalyticsService {
         ? parseFloat(((totalConversions / totalVisitors) * 100).toFixed(2))
         : 0;
 
+    let visitorsChange = 0;
+    let sessionsChange = 0;
+    let pageviewsChange = 0;
+    let averageDurationChange = 0;
+    let bounceRateChange = 0;
+    let conversionsChange = 0;
+    let conversionRateChange = 0;
+
+    if (records.length > 0) {
+      const windowMs = to.getTime() - from.getTime();
+      const prevTo = new Date(from.getTime());
+      const prevFrom = new Date(prevTo.getTime() - windowMs);
+
+      const prevRecords = await this.deps.prisma.analyticsDaily.findMany({
+        where: {
+          site_id,
+          path: "*",
+          date: {
+            gte: prevFrom,
+            lte: prevTo,
+          },
+        },
+      });
+
+      if (prevRecords.length > 0) {
+        let prevVisitors = 0;
+        let prevSessions = 0;
+        let prevPageviews = 0;
+        let prevDurationSec = 0;
+        let prevBounces = 0;
+        let prevWhatsapp = 0;
+        let prevForm = 0;
+
+        for (const pr of prevRecords) {
+          prevVisitors += pr.visitors;
+          prevSessions += pr.sessions;
+          prevPageviews += pr.pageviews;
+          prevDurationSec += pr.durationSec;
+          prevBounces += pr.bounces;
+          prevWhatsapp += pr.whatsappClicks;
+          prevForm += pr.formSubmits;
+        }
+
+        const prevConversions = prevWhatsapp + prevForm;
+        const prevAvgDuration =
+          prevSessions > 0 ? Math.round(prevDurationSec / prevSessions) : 0;
+        const prevBounceRate =
+          prevSessions > 0 ? (prevBounces / prevSessions) * 100 : 0;
+        const prevConversionRate =
+          prevVisitors > 0 ? (prevConversions / prevVisitors) * 100 : 0;
+
+        visitorsChange =
+          prevVisitors > 0
+            ? parseFloat(
+                (((totalVisitors - prevVisitors) / prevVisitors) * 100).toFixed(1)
+              )
+            : 0;
+        sessionsChange =
+          prevSessions > 0
+            ? parseFloat(
+                (((totalSessions - prevSessions) / prevSessions) * 100).toFixed(1)
+              )
+            : 0;
+        pageviewsChange =
+          prevPageviews > 0
+            ? parseFloat(
+                (
+                  ((totalPageviews - prevPageviews) / prevPageviews) *
+                  100
+                ).toFixed(1)
+              )
+            : 0;
+        averageDurationChange =
+          prevAvgDuration > 0
+            ? parseFloat(
+                (
+                  ((averageDurationSec - prevAvgDuration) / prevAvgDuration) *
+                  100
+                ).toFixed(1)
+              )
+            : 0;
+        bounceRateChange = parseFloat(
+          (bounceRate - prevBounceRate).toFixed(1)
+        );
+        conversionsChange =
+          prevConversions > 0
+            ? parseFloat(
+                (
+                  ((totalConversions - prevConversions) / prevConversions) *
+                  100
+                ).toFixed(1)
+              )
+            : 0;
+        conversionRateChange = parseFloat(
+          (conversionRate - prevConversionRate).toFixed(2)
+        );
+      }
+    }
+
     return {
       site_id,
       period: {
@@ -79,21 +178,21 @@ export class AnalyticsService {
       },
       metrics: {
         visitors: totalVisitors,
-        visitorsChange: 14.8,
+        visitorsChange,
         sessions: totalSessions,
-        sessionsChange: 11.2,
+        sessionsChange,
         pageviews: totalPageviews,
-        pageviewsChange: 22.4,
+        pageviewsChange,
         averageDurationSec,
-        averageDurationChange: 5.0,
+        averageDurationChange,
         bounceRate,
-        bounceRateChange: -2.4,
+        bounceRateChange,
         whatsappClicks: totalWhatsappClicks,
         formSubmits: totalFormSubmits,
         conversions: totalConversions,
-        conversionsChange: 18.5,
+        conversionsChange,
         conversionRate,
-        conversionRateChange: 0.22,
+        conversionRateChange,
       },
     };
   }
