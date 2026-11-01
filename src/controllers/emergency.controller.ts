@@ -4,12 +4,18 @@ import { sendSuccess } from "../utils/response";
 import { defaultTenantGuard } from "../utils/optimistic";
 import { ITenantGuard } from "../container/types";
 
+/**
+ * HTTP handlers for Super Admin emergency operations and incident audit logs.
+ */
 export class EmergencyController {
   constructor(
     private readonly emergencyService: EmergencyService = new EmergencyService(),
     private readonly tenantGuard: ITenantGuard = defaultTenantGuard
   ) {}
 
+  /**
+   * Returns current site emergency flags and the recent audit log history.
+   */
   getEmergencyOverview = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -21,6 +27,9 @@ export class EmergencyController {
     }
   };
 
+  /**
+   * Force-reverts a published CMS item to DRAFT and triggers frontend cache revalidation.
+   */
   unpublishContent = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.emergencyService.unpublishContent({
@@ -36,6 +45,9 @@ export class EmergencyController {
     }
   };
 
+  /**
+   * Disables public contact form submissions to mitigate spam or abuse incidents.
+   */
   lockContactForm = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.emergencyService.lockContactForm({
@@ -49,6 +61,9 @@ export class EmergencyController {
     }
   };
 
+  /**
+   * Re-enables public contact form submissions after an incident is resolved.
+   */
   unlockContactForm = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.emergencyService.unlockContactForm({
@@ -62,6 +77,9 @@ export class EmergencyController {
     }
   };
 
+  /**
+   * Configures or clears the site-wide emergency announcement banner.
+   */
   setAlertBanner = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.emergencyService.setAlertBanner({
@@ -77,6 +95,9 @@ export class EmergencyController {
     }
   };
 
+  /**
+   * Overrides the assigned PIC on a lead during staff unavailability or escalation.
+   */
   reassignLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
