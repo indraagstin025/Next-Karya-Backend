@@ -6,8 +6,8 @@ import crypto from "crypto";
 import { MediaService } from "../services/media.service";
 import { env } from "../config/env";
 import { sendSuccess, sendPaginated, sendError } from "../utils/response";
-
-const mediaService = new MediaService();
+import { defaultTenantGuard } from "../utils/optimistic";
+import { ITenantGuard } from "../container/types";
 
 const uploadDirPath = path.resolve(process.cwd(), env.UPLOAD_DIR);
 if (!fs.existsSync(uploadDirPath)) {
@@ -31,12 +31,13 @@ const storage = multer.diskStorage({
     const rawExt = path.extname(file.originalname).toLowerCase();
     const validExts = allowedMimeToExt[file.mimetype] || [".bin"];
     const ext = validExts.includes(rawExt) ? rawExt : validExts[0];
-    const cleanBaseName = path
-      .basename(file.originalname, rawExt)
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, "-")
-      .replace(/-+/g, "-")
-      .slice(0, 60) || "asset";
+    const cleanBaseName =
+      path
+        .basename(file.originalname, rawExt)
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .slice(0, 60) || "asset";
     cb(null, `${cleanBaseName}-${uniqueSuffix}${ext}`);
   },
 });
@@ -89,7 +90,10 @@ function extractWebpDimensions(buf: Buffer): { width: number; height: number } |
   }
   if (chunkType === "VP8L") {
     if (buf[20] === 0x2f) {
-      const b1 = buf[21], b2 = buf[22], b3 = buf[23], b4 = buf[24];
+      const b1 = buf[21],
+        b2 = buf[22],
+        b3 = buf[23],
+        b4 = buf[24];
       const width = 1 + (((b2 & 0x3f) << 8) | b1);
       const height = 1 + (((b4 & 0x0f) << 10) | (b3 << 2) | ((b2 & 0xc0) >> 6));
       return { width, height };
@@ -98,7 +102,7 @@ function extractWebpDimensions(buf: Buffer): { width: number; height: number } |
   return null;
 }
 
-function validateFileIntegrity(filePath: string, mimeType: string): FileValidationResult {
+export function validateFileIntegrity(filePath: string, mimeType: string): FileValidationResult {
   try {
     const buf = fs.readFileSync(filePath);
     if (!buf || buf.length < 16) {
@@ -119,12 +123,18 @@ function validateFileIntegrity(filePath: string, mimeType: string): FileValidati
         return { valid: false, reason: "Dimensi gambar PNG tidak valid (0 piksel)." };
       }
       if (width > 8000 || height > 8000) {
-        return { valid: false, reason: `Dimensi gambar (${width}x${height}px) melebihi batas aman maksimal 8000x8000 piksel.` };
+        return {
+          valid: false,
+          reason: `Dimensi gambar (${width}x${height}px) melebihi batas aman maksimal 8000x8000 piksel.`,
+        };
       }
       const iendChunk = Buffer.from([0x49, 0x45, 0x4e, 0x44]);
       const iendIndex = buf.lastIndexOf(iendChunk);
       if (iendIndex === -1 || iendIndex < buf.length - 16) {
-        return { valid: false, reason: "Berkas PNG rusak atau terpotong (chunk akhir IEND tidak ditemukan)." };
+        return {
+          valid: false,
+          reason: "Berkas PNG rusak atau terpotong (chunk akhir IEND tidak ditemukan).",
+        };
       }
       return { valid: true, width, height };
     }
@@ -142,12 +152,18 @@ function validateFileIntegrity(filePath: string, mimeType: string): FileValidati
         }
       }
       if (!hasEoi) {
-        return { valid: false, reason: "Berkas JPEG rusak atau terpotong (marker akhir EOI tidak ditemukan)." };
+        return {
+          valid: false,
+          reason: "Berkas JPEG rusak atau terpotong (marker akhir EOI tidak ditemukan).",
+        };
       }
       const dims = extractJpegDimensions(buf);
       if (dims) {
         if (dims.width > 8000 || dims.height > 8000) {
-          return { valid: false, reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.` };
+          return {
+            valid: false,
+            reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.`,
+          };
         }
         return { valid: true, width: dims.width, height: dims.height };
       }
@@ -163,12 +179,19 @@ function validateFileIntegrity(filePath: string, mimeType: string): FileValidati
       }
       const declaredSize = buf.readUInt32LE(4) + 8;
       if (buf.length < declaredSize) {
-        return { valid: false, reason: "Berkas WebP rusak atau terpotong (ukuran berkas lebih kecil dari deklarasi header)." };
+        return {
+          valid: false,
+          reason:
+            "Berkas WebP rusak atau terpotong (ukuran berkas lebih kecil dari deklarasi header).",
+        };
       }
       const dims = extractWebpDimensions(buf);
       if (dims) {
         if (dims.width > 8000 || dims.height > 8000) {
-          return { valid: false, reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.` };
+          return {
+            valid: false,
+            reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.`,
+          };
         }
         return { valid: true, width: dims.width, height: dims.height };
       }
@@ -178,7 +201,11 @@ function validateFileIntegrity(filePath: string, mimeType: string): FileValidati
     if (mimeType === "image/svg+xml") {
       const content = buf.toString("utf8");
       if (!content.includes("<svg") || !content.includes("</svg>")) {
-        return { valid: false, reason: "Format SVG tidak lengkap atau rusak (tidak memiliki tag <svg> pembuka dan penutup)." };
+        return {
+          valid: false,
+          reason:
+            "Format SVG tidak lengkap atau rusak (tidak memiliki tag <svg> pembuka dan penutup).",
+        };
       }
       const lower = content.toLowerCase();
       const forbiddenPatterns = [
@@ -190,12 +217,15 @@ function validateFileIntegrity(filePath: string, mimeType: string): FileValidati
         "<foreignobject",
         "<iframe",
         "data:text/html",
-        "xlink:href=\"javascript:",
+        'xlink:href="javascript:',
         "xlink:href='javascript:",
       ];
       for (const pat of forbiddenPatterns) {
         if (lower.includes(pat)) {
-          return { valid: false, reason: `Berkas SVG ditolak demi keamanan karena mengandung pola berbahaya: ${pat}` };
+          return {
+            valid: false,
+            reason: `Berkas SVG ditolak demi keamanan karena mengandung pola berbahaya: ${pat}`,
+          };
         }
       }
       return { valid: true };
@@ -207,14 +237,20 @@ function validateFileIntegrity(filePath: string, mimeType: string): FileValidati
       }
       const lastBytes = buf.subarray(Math.max(0, buf.length - 1024)).toString("ascii");
       if (!lastBytes.includes("%%EOF")) {
-        return { valid: false, reason: "Berkas PDF rusak atau terpotong (marker %%EOF tidak ditemukan)." };
+        return {
+          valid: false,
+          reason: "Berkas PDF rusak atau terpotong (marker %%EOF tidak ditemukan).",
+        };
       }
       return { valid: true };
     }
 
     return { valid: false, reason: "Tipe berkas tidak didukung." };
   } catch (err: any) {
-    return { valid: false, reason: `Gagal memverifikasi keutuhan berkas: ${err?.message || "Kesalahan pembacaan"}` };
+    return {
+      valid: false,
+      reason: `Gagal memverifikasi keutuhan berkas: ${err?.message || "Kesalahan pembacaan"}`,
+    };
   }
 }
 
@@ -233,15 +269,20 @@ export const uploadMiddleware = multer({
 });
 
 export class MediaController {
-  async getMedia(req: Request, res: Response, next: NextFunction) {
+  constructor(
+    private readonly mediaService: MediaService = new MediaService(),
+    private readonly tenantGuard: ITenantGuard = defaultTenantGuard
+  ) {}
+
+  getMedia = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const search = req.query.search as string | undefined;
       const mimeType = req.query.mimeType as string | undefined;
       const page = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
       const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 100);
 
-      const { items, meta } = await mediaService.getMedia({
+      const { items, meta } = await this.mediaService.getMedia({
         site_id,
         search,
         mimeType,
@@ -253,9 +294,9 @@ export class MediaController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async uploadMedia(req: Request, res: Response, next: NextFunction) {
+  uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.file) {
         return sendError(res, 400, "MISSING_FILE", "Berkas unggahan wajib disertakan.");
@@ -282,17 +323,24 @@ export class MediaController {
           res,
           400,
           "CORRUPTED_OR_INVALID_FILE",
-          validation.reason || "Berkas gambar rusak, terpotong, atau tidak memenuhi standar keamanan."
+          validation.reason ||
+            "Berkas gambar rusak, terpotong, atau tidak memenuhi standar keamanan."
         );
       }
 
-      const site_id = (req.body.site_id as string) || (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(
+        req.body?.site_id ?? req.query.site_id
+      );
       const altText = req.body.altText as string | undefined;
 
       // Pengecekan Duplikasi Berkas (SHA-256 Checksum)
       const fileBuf = fs.readFileSync(file.path);
       const fileHash = crypto.createHash("sha256").update(fileBuf).digest("hex");
-      const duplicateMedia = await mediaService.findDuplicateMedia(site_id, file.size, fileHash);
+      const duplicateMedia = await this.mediaService.findDuplicateMedia(
+        site_id,
+        file.size,
+        fileHash
+      );
 
       if (duplicateMedia) {
         if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
@@ -301,13 +349,14 @@ export class MediaController {
           {
             ...duplicateMedia,
             isDuplicate: true,
-            message: "Berkas identik sudah ada di Pustaka Media. Menggunakan berkas yang telah tersimpan.",
+            message:
+              "Berkas identik sudah ada di Pustaka Media. Menggunakan berkas yang telah tersimpan.",
           },
           200
         );
       }
 
-      const media = await mediaService.saveUploadedFile(
+      const media = await this.mediaService.saveUploadedFile(
         file,
         site_id,
         req.user!.id,
@@ -327,16 +376,18 @@ export class MediaController {
       }
       next(err);
     }
-  }
+  };
 
-  async deleteMedia(req: Request, res: Response, next: NextFunction) {
+  deleteMedia = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
-      const site_id = (req.query.site_id as string) || (req.body?.site_id as string);
-      const result = await mediaService.deleteMedia(id, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(
+        req.query.site_id ?? req.body?.site_id
+      );
+      const result = await this.mediaService.deleteMedia(id, site_id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 }
