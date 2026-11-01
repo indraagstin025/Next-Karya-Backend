@@ -9,6 +9,9 @@ import {
   updateScheduleSchema,
 } from "../../validators/crm";
 
+/**
+ * Creates the `/crm` router for authenticated lead management, follow-up queues, notes, and schedules.
+ */
 export function createCrmRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { crm: crmController } = container.controllers;
@@ -16,10 +19,8 @@ export function createCrmRouter(container: AppContainer = appContainer): Router 
 
   router.use(requireAuth);
 
-  // CRM Follow Up Agenda Today (Morning Operational)
   router.get("/follow-up-today", crmController.getFollowUpToday);
 
-  // Leads
   router.get("/leads", crmController.getLeads);
   router.get("/leads/:id", validateParams(idParamSchema), crmController.getLeadById);
   router.post("/leads", validateBody(createLeadInternalSchema), crmController.createLeadInternal);
@@ -36,7 +37,6 @@ export function createCrmRouter(container: AppContainer = appContainer): Router 
     crmController.addLeadNote
   );
 
-  // Project Schedules (Gantt timeline)
   router.get("/schedules", crmController.getSchedules);
   router.post("/schedules", validateBody(createScheduleSchema), crmController.createSchedule);
   router.patch(
