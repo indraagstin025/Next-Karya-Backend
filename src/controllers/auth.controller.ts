@@ -2,9 +2,15 @@ import { Request, Response, NextFunction } from "express";
 import { AuthService } from "../services/auth.service";
 import { sendSuccess } from "../utils/response";
 
+/**
+ * HTTP handlers for staff authentication, profile introspection, and session revocation.
+ */
 export class AuthController {
   constructor(private readonly authService: AuthService = new AuthService()) {}
 
+  /**
+   * Authenticates staff credentials and returns a signed JWT alongside user profile details.
+   */
   login = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email, password } = req.body;
@@ -15,6 +21,9 @@ export class AuthController {
     }
   };
 
+  /**
+   * Returns the identity and role claims resolved by the JWT authentication middleware.
+   */
   me = async (req: Request, res: Response, next: NextFunction) => {
     try {
       return sendSuccess(res, { user: req.user });
@@ -23,6 +32,9 @@ export class AuthController {
     }
   };
 
+  /**
+   * Lists active staff accounts eligible for CRM lead and schedule assignments.
+   */
   getStaffUsers = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const users = await this.authService.getStaffUsers();
@@ -32,6 +44,9 @@ export class AuthController {
     }
   };
 
+  /**
+   * Invalidates all active JWTs for the target user by incrementing their session version.
+   */
   revokeSessions = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
