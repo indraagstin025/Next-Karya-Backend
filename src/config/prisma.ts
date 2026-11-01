@@ -5,6 +5,9 @@ declare global {
   var prismaGlobal: PrismaClient | undefined;
 }
 
+/**
+ * Global PrismaClient singleton, cached on globalThis in non-production to prevent connection leaks during hot reloading.
+ */
 export const prisma =
   global.prismaGlobal ||
   new PrismaClient({
