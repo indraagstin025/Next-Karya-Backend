@@ -1,12 +1,32 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { prisma } from "../config/prisma";
-import { env } from "../config/env";
+import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../config/prisma";
+import { env as defaultEnv, EnvConfig } from "../config/env";
+import { ITenantGuard } from "../container/types";
+import { AppError } from "../core/AppError";
+import { defaultLogger, ILogger } from "../core/logger";
+import { defaultTenantGuard } from "../utils/optimistic";
 import { PaginationMeta } from "../utils/response";
-import { resolveAuthorizedSiteId } from "../utils/optimistic";
+
+export interface MediaServiceDeps {
+  prisma: PrismaClient;
+  env: EnvConfig;
+  tenantGuard: ITenantGuard;
+  logger: ILogger;
+}
 
 export class MediaService {
+  constructor(
+    private readonly deps: MediaServiceDeps = {
+      prisma: defaultPrisma,
+      env: defaultEnv,
+      tenantGuard: defaultTenantGuard,
+      logger: defaultLogger,
+    }
+  ) {}
+
   async getMedia(query: {
     site_id?: string;
     search?: string;
@@ -14,7 +34,7 @@ export class MediaService {
     page: number;
     limit: number;
   }) {
-    const site_id = resolveAuthorizedSiteId(query.site_id);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(query.site_id);
     const { search, mimeType, page, limit } = query;
     const skip = (page - 1) * limit;
 
@@ -28,8 +48,8 @@ export class MediaService {
     }
 
     const [total, items] = await Promise.all([
-      prisma.media.count({ where }),
-      prisma.media.findMany({
+      this.deps.prisma.media.count({ where }),
+      this.deps.prisma.media.findMany({
         where,
         skip,
         take: limit,
@@ -55,8 +75,8 @@ export class MediaService {
     fileSize: number,
     fileHash: string
   ) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    const candidates = await prisma.media.findMany({
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const candidates = await this.deps.prisma.media.findMany({
       where: { site_id, fileSize },
       select: {
         id: true,
@@ -74,7 +94,7 @@ export class MediaService {
       },
     });
 
-    const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
+    const uploadRoot = path.resolve(process.cwd(), this.deps.env.UPLOAD_DIR);
     for (const cand of candidates) {
       const candPath = path.resolve(uploadRoot, path.basename(cand.fileName));
       if (candPath.startsWith(uploadRoot) && fs.existsSync(candPath)) {
@@ -100,12 +120,12 @@ export class MediaService {
     width?: number,
     height?: number
   ) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const safeFileName = path.basename(file.filename);
     const fileUrl = `/uploads/${safeFileName}`;
     const cleanAlt = altText ? altText.trim().slice(0, 255) : null;
 
-    const media = await prisma.media.create({
+    const media = await this.deps.prisma.media.create({
       data: {
         site_id,
         fileName: safeFileName,
@@ -127,43 +147,46 @@ export class MediaService {
   }
 
   async deleteMedia(id: string, rawSiteId?: string) {
-    const site_id = resolveAuthorizedSiteId(rawSiteId);
-    const media = await prisma.media.findFirst({ where: { id, site_id } });
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const media = await this.deps.prisma.media.findFirst({
+      where: { id, site_id },
+    });
     if (!media) {
-      throw { statusCode: 404, code: "NOT_FOUND", message: "Berkas tidak ditemukan." };
+      throw AppError.notFound("Berkas tidak ditemukan.");
     }
 
     const [usedInPost, usedInPortfolio] = await Promise.all([
-      prisma.post.findFirst({
+      this.deps.prisma.post.findFirst({
         where: { site_id, coverUrl: media.url },
         select: { id: true, title: true },
       }),
-      prisma.portfolio.findFirst({
+      this.deps.prisma.portfolio.findFirst({
         where: { site_id, thumbnailUrl: media.url },
         select: { id: true, title: true },
       }),
     ]);
 
     if (usedInPost || usedInPortfolio) {
-      throw {
-        statusCode: 400,
-        code: "MEDIA_IN_USE",
-        message:
-          "Berkas tidak dapat dihapus karena masih digunakan pada artikel atau portofolio.",
-      };
+      throw AppError.badRequest(
+        "MEDIA_IN_USE",
+        "Berkas tidak dapat dihapus karena masih digunakan pada artikel atau portofolio."
+      );
     }
 
-    const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
+    const uploadRoot = path.resolve(process.cwd(), this.deps.env.UPLOAD_DIR);
     const filePath = path.resolve(uploadRoot, path.basename(media.fileName));
     if (filePath.startsWith(uploadRoot) && fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
       } catch (err: any) {
-        console.warn("[Media Unlink Warning]", err.message);
+        this.deps.logger.warn("Failed to unlink media file from disk", {
+          fileName: media.fileName,
+          error: err?.message,
+        });
       }
     }
 
-    await prisma.media.delete({ where: { id: media.id } });
+    await this.deps.prisma.media.delete({ where: { id: media.id } });
     return { message: "Berkas media berhasil dihapus." };
   }
 }
