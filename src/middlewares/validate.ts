@@ -2,14 +2,27 @@ import { Request, Response, NextFunction } from "express";
 import { ZodSchema, ZodError, z } from "zod";
 import { sendError, ErrorDetail } from "../utils/response";
 
-export const idParamSchema = z.object({
-  id: z
-    .string()
-    .trim()
-    .min(1, "ID wajib diisi")
-    .max(64, "ID maksimal 64 karakter")
-    .regex(/^[a-zA-Z0-9_-]+$/, "Format ID tidak valid"),
-});
+export const idParamSchema = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .min(1, "ID wajib diisi")
+      .max(64, "ID maksimal 64 karakter")
+      .regex(/^[a-zA-Z0-9_-]+$/, "Format ID tidak valid"),
+  })
+  .strict();
+
+export const slugParamSchema = z
+  .object({
+    slug: z
+      .string()
+      .trim()
+      .min(1, "Slug wajib diisi")
+      .max(255, "Slug maksimal 255 karakter")
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Format slug tidak valid"),
+  })
+  .strict();
 
 export function validateBody(schema: ZodSchema) {
   return async (req: Request, res: Response, next: NextFunction) => {
