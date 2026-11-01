@@ -1,14 +1,30 @@
-import { prisma } from "../config/prisma";
+import { PrismaClient } from "@prisma/client";
+import { prisma as defaultPrisma } from "../config/prisma";
+import { ITenantGuard } from "../container/types";
+import { defaultTenantGuard } from "../utils/optimistic";
+
+export interface AnalyticsServiceDeps {
+  prisma: PrismaClient;
+  tenantGuard: ITenantGuard;
+}
 
 export class AnalyticsService {
-  async getOverview(site_id: string, fromDateStr?: string, toDateStr?: string) {
+  constructor(
+    private readonly deps: AnalyticsServiceDeps = {
+      prisma: defaultPrisma,
+      tenantGuard: defaultTenantGuard,
+    }
+  ) {}
+
+  async getOverview(rawSiteId?: string, fromDateStr?: string, toDateStr?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const to = toDateStr ? new Date(toDateStr) : new Date();
     const from = fromDateStr
       ? new Date(fromDateStr)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     // Filter analytics_daily for path = '*' strictly
-    const records = await prisma.analyticsDaily.findMany({
+    const records = await this.deps.prisma.analyticsDaily.findMany({
       where: {
         site_id,
         path: "*",
@@ -76,28 +92,38 @@ export class AnalyticsService {
     };
   }
 
-  async getPages(site_id: string, fromDateStr?: string, toDateStr?: string, limit = 10) {
+  async getPages(
+    rawSiteId?: string,
+    fromDateStr?: string,
+    toDateStr?: string,
+    limit = 10
+  ) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
     const to = toDateStr ? new Date(toDateStr) : new Date();
     const from = fromDateStr
       ? new Date(fromDateStr)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const records = await prisma.analyticsDaily.findMany({
+    const records = await this.deps.prisma.analyticsDaily.findMany({
       where: {
         site_id,
-        path: { not: '*' },
+        path: { not: "*" },
         date: { gte: from, lte: to },
       },
     });
 
-    const pathMap = new Map<string, {
-      path: string;
-      pageviews: number;
-      visitors: number;
-      sessions: number;
-      bounces: number;
-      conversions: number;
-    }>();
+    const pathMap = new Map<
+      string,
+      {
+        path: string;
+        pageviews: number;
+        visitors: number;
+        sessions: number;
+        bounces: number;
+        conversions: number;
+      }
+    >();
 
     for (const r of records) {
       const existing = pathMap.get(r.path) || {
@@ -112,19 +138,21 @@ export class AnalyticsService {
       existing.visitors += r.visitors;
       existing.sessions += r.sessions;
       existing.bounces += r.bounces;
-      existing.conversions += (r.whatsappClicks + r.formSubmits);
+      existing.conversions += r.whatsappClicks + r.formSubmits;
       pathMap.set(r.path, existing);
     }
 
     const sorted = Array.from(pathMap.values())
       .sort((a, b) => b.pageviews - a.pageviews)
-      .slice(0, limit);
+      .slice(0, safeLimit);
 
     return sorted.map((r) => {
       const pageviews = r.pageviews;
       const visitors = r.visitors;
       const bounceRate =
-        r.sessions > 0 ? parseFloat(((r.bounces / r.sessions) * 100).toFixed(2)) : 0;
+        r.sessions > 0
+          ? parseFloat(((r.bounces / r.sessions) * 100).toFixed(2))
+          : 0;
       const conversionRate =
         visitors > 0
           ? parseFloat(((r.conversions / visitors) * 100).toFixed(2))
@@ -141,13 +169,14 @@ export class AnalyticsService {
     });
   }
 
-  async getSources(site_id: string, fromDateStr?: string, toDateStr?: string) {
+  async getSources(rawSiteId?: string, fromDateStr?: string, toDateStr?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const to = toDateStr ? new Date(toDateStr) : new Date();
     const from = fromDateStr
       ? new Date(fromDateStr)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    const records = await prisma.analyticsDaily.findMany({
+    const records = await this.deps.prisma.analyticsDaily.findMany({
       where: {
         site_id,
         path: { not: "*" },
@@ -156,15 +185,18 @@ export class AnalyticsService {
       },
     });
 
-    const sourceMap = new Map<string, {
-      source: string;
-      pageviews: number;
-      visitors: number;
-      conversions: number;
-    }>();
+    const sourceMap = new Map<
+      string,
+      {
+        source: string;
+        pageviews: number;
+        visitors: number;
+        conversions: number;
+      }
+    >();
 
     for (const r of records) {
-      const src = r.source || 'direct';
+      const src = r.source || "direct";
       const existing = sourceMap.get(src) || {
         source: src,
         pageviews: 0,
@@ -173,11 +205,13 @@ export class AnalyticsService {
       };
       existing.pageviews += r.pageviews;
       existing.visitors += r.visitors;
-      existing.conversions += (r.whatsappClicks + r.formSubmits);
+      existing.conversions += r.whatsappClicks + r.formSubmits;
       sourceMap.set(src, existing);
     }
 
-    const rows = Array.from(sourceMap.values()).sort((a, b) => b.pageviews - a.pageviews);
+    const rows = Array.from(sourceMap.values()).sort(
+      (a, b) => b.pageviews - a.pageviews
+    );
     const totalPageviews = rows.reduce((acc, r) => acc + r.pageviews, 0);
 
     const labels: Record<string, string> = {
