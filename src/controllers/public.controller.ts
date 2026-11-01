@@ -1,54 +1,59 @@
 import { Request, Response, NextFunction } from "express";
 import { PublicService } from "../services/public.service";
 import { sendSuccess, sendPaginated, sendError } from "../utils/response";
-
-const publicService = new PublicService();
+import { defaultTenantGuard } from "../utils/optimistic";
+import { ITenantGuard } from "../container/types";
 
 export class PublicController {
-  async getSiteStatus(req: Request, res: Response, next: NextFunction) {
+  constructor(
+    private readonly publicService: PublicService = new PublicService(),
+    private readonly tenantGuard: ITenantGuard = defaultTenantGuard
+  ) {}
+
+  getSiteStatus = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
-      const status = await publicService.getSiteStatus(site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const status = await this.publicService.getSiteStatus(site_id);
       return sendSuccess(res, status);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getCategories(req: Request, res: Response, next: NextFunction) {
+  getCategories = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
-      const categories = await publicService.getCategories(site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const categories = await this.publicService.getCategories(site_id);
       return sendSuccess(res, categories);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async lookupRedirect(req: Request, res: Response, next: NextFunction) {
+  lookupRedirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const fromPath = (req.query.fromPath as string) || "";
       if (!fromPath) {
         return sendSuccess(res, null);
       }
-      const redirect = await publicService.lookupRedirect(site_id, fromPath);
+      const redirect = await this.publicService.lookupRedirect(site_id, fromPath);
       return sendSuccess(res, redirect);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getArticles(req: Request, res: Response, next: NextFunction) {
+  getArticles = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const page = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
       const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 100);
       const category = req.query.category as string | undefined;
       const tag = req.query.tag as string | undefined;
       const search = req.query.search as string | undefined;
 
-      const { items, meta } = await publicService.getArticles({
+      const { items, meta } = await this.publicService.getArticles({
         site_id,
         page,
         limit,
@@ -61,14 +66,14 @@ export class PublicController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getArticleBySlug(req: Request, res: Response, next: NextFunction) {
+  getArticleBySlug = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const slug = req.params.slug as string;
 
-      const article = await publicService.getArticleBySlug(site_id, slug);
+      const article = await this.publicService.getArticleBySlug(site_id, slug);
       if (!article) {
         return sendError(res, 404, "NOT_FOUND", "Artikel tidak ditemukan.");
       }
@@ -77,11 +82,11 @@ export class PublicController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getPortfolios(req: Request, res: Response, next: NextFunction) {
+  getPortfolios = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const page = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
       const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 100);
       const isFeatured =
@@ -91,7 +96,7 @@ export class PublicController {
           ? false
           : undefined;
 
-      const { items, meta } = await publicService.getPortfolios({
+      const { items, meta } = await this.publicService.getPortfolios({
         site_id,
         isFeatured,
         page,
@@ -102,14 +107,14 @@ export class PublicController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getPortfolioBySlug(req: Request, res: Response, next: NextFunction) {
+  getPortfolioBySlug = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const slug = req.params.slug as string;
 
-      const portfolio = await publicService.getPortfolioBySlug(site_id, slug);
+      const portfolio = await this.publicService.getPortfolioBySlug(site_id, slug);
       if (!portfolio) {
         return sendError(res, 404, "NOT_FOUND", "Portofolio tidak ditemukan.");
       }
@@ -118,45 +123,45 @@ export class PublicController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getServices(req: Request, res: Response, next: NextFunction) {
+  getServices = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
-      const services = await publicService.getServices(site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const services = await this.publicService.getServices(site_id);
       return sendSuccess(res, services);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getFaqs(req: Request, res: Response, next: NextFunction) {
+  getFaqs = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const category = req.query.category as string | undefined;
-      const faqs = await publicService.getFaqs(site_id, category);
+      const faqs = await this.publicService.getFaqs(site_id, category);
       return sendSuccess(res, faqs);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getTestimonials(req: Request, res: Response, next: NextFunction) {
+  getTestimonials = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
-      const testimonials = await publicService.getTestimonials(site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const testimonials = await this.publicService.getTestimonials(site_id);
       return sendSuccess(res, testimonials);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getPageBySlug(req: Request, res: Response, next: NextFunction) {
+  getPageBySlug = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = (req.query.site_id as string) || "nextkarya-main";
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const slug = req.params.slug as string;
 
-      const page = await publicService.getPageBySlug(site_id, slug);
+      const page = await this.publicService.getPageBySlug(site_id, slug);
       if (!page) {
         return sendError(res, 404, "NOT_FOUND", "Halaman tidak ditemukan.");
       }
@@ -165,11 +170,11 @@ export class PublicController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async submitLead(req: Request, res: Response, next: NextFunction) {
+  submitLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await publicService.submitLead(req.body);
+      await this.publicService.submitLead(req.body);
       return sendSuccess(
         res,
         {
@@ -181,14 +186,14 @@ export class PublicController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async recordAnalyticsEvent(req: Request, res: Response, next: NextFunction) {
+  recordAnalyticsEvent = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await publicService.recordAnalyticsEvent(req.body);
+      const result = await this.publicService.recordAnalyticsEvent(req.body);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 }
