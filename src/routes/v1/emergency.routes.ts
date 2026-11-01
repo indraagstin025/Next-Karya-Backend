@@ -9,6 +9,9 @@ import {
   reassignLeadEmergencySchema,
 } from "../../validators/emergency";
 
+/**
+ * Creates the `/emergency` router for authenticated incident response, content takedown, and form locking.
+ */
 export function createEmergencyRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { emergency: emergencyController } = container.controllers;
