@@ -24,6 +24,10 @@ export const slugParamSchema = z
   })
   .strict();
 
+/**
+ * Validates and replaces `req.body` using the given Zod schema, returning HTTP 400
+ * with field-level details when validation or `.strict()` unknown-key checks fail.
+ */
 export function validateBody(schema: ZodSchema) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -48,6 +52,9 @@ export function validateBody(schema: ZodSchema) {
   };
 }
 
+/**
+ * Validates and coerces `req.query` parameters against the given Zod schema.
+ */
 export function validateQuery(schema: ZodSchema) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -72,6 +79,10 @@ export function validateQuery(schema: ZodSchema) {
   };
 }
 
+/**
+ * Validates route parameters (`req.params`) against `idParamSchema` or a custom Zod schema
+ * before reaching controller handlers.
+ */
 export function validateParams(schema: ZodSchema = idParamSchema) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
