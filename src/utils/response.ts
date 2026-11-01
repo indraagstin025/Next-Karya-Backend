@@ -19,6 +19,10 @@ export interface ErrorPayload {
   currentData?: any;
 }
 
+/**
+ * Sends a standardized JSON envelope (`{ success: true, data, meta: null, error: null }`)
+ * for non-paginated API responses.
+ */
 export function sendSuccess<T>(res: Response, data: T, statusCode = 200) {
   return res.status(statusCode).json({
     success: true,
@@ -28,6 +32,9 @@ export function sendSuccess<T>(res: Response, data: T, statusCode = 200) {
   });
 }
 
+/**
+ * Sends a standardized JSON envelope containing an array of items alongside pagination metadata.
+ */
 export function sendPaginated<T>(
   res: Response,
   data: T[],
@@ -42,6 +49,10 @@ export function sendPaginated<T>(
   });
 }
 
+/**
+ * Sends a standardized error JSON envelope (`{ success: false, data: null, meta: null, error }`),
+ * optionally including field-level validation issues or `currentData` on HTTP 409 conflicts.
+ */
 export function sendError(
   res: Response,
   statusCode: number,
