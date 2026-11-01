@@ -7,6 +7,10 @@ export interface RevalidatePayload {
   action: "update";
 }
 
+/**
+ * Dispatches authenticated cache-revalidation webhooks to the Next.js frontend
+ * when published CMS content or site status changes.
+ */
 export class WebhookNotifier implements IWebhookNotifier {
   constructor(
     private readonly frontendUrl: string = env.FRONTEND_URL,
@@ -14,6 +18,10 @@ export class WebhookNotifier implements IWebhookNotifier {
     private readonly logger: ILogger = defaultLogger
   ) {}
 
+  /**
+   * Posts a revalidation tag to `${frontendUrl}/api/revalidate` with exponential backoff
+   * (2s, 4s, 8s) and a 3-second per-request timeout so slow frontend responses do not block mutations.
+   */
   async triggerRevalidation(tag: string, retries = 3): Promise<void> {
     const url = `${this.frontendUrl}/api/revalidate`;
     const payload: RevalidatePayload = {
@@ -65,6 +73,9 @@ export class WebhookNotifier implements IWebhookNotifier {
 
 export const defaultWebhookNotifier = new WebhookNotifier();
 
+/**
+ * Triggers Next.js ISR cache revalidation for the given tag using the default `WebhookNotifier`.
+ */
 export async function triggerRevalidationWebhook(
   tag: string,
   retries = 3
