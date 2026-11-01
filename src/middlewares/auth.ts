@@ -28,11 +28,20 @@ declare global {
 export const JWT_ISSUER = "nextkarya-api";
 export const JWT_AUDIENCE = "nextkarya-cms";
 
+/**
+ * Checks whether an incoming request carries a non-empty `Authorization: Bearer <token>` header,
+ * used by dual-mounted public/CMS routes to route authenticated requests to the CMS controller.
+ */
 export function hasBearerAuth(req: Request): boolean {
   const authHeader = req.headers.authorization;
   return Boolean(authHeader && authHeader.startsWith("Bearer ") && authHeader.length > 15);
 }
 
+/**
+ * Builds an Express authentication middleware that verifies HS256 JWT signatures,
+ * checks `iss` and `aud` claims, ensures the staff account is active, and validates
+ * `tokenVersion` against Redis/PostgreSQL so emergency session revocations take effect immediately.
+ */
 export function createAuthMiddleware(
   deps: {
     prisma: PrismaClient;
