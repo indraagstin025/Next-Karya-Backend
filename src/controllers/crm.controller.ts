@@ -4,12 +4,18 @@ import { sendSuccess, sendPaginated, sendError } from "../utils/response";
 import { checkOptimisticLock, defaultTenantGuard } from "../utils/optimistic";
 import { ITenantGuard } from "../container/types";
 
+/**
+ * HTTP handlers for CRM lead pipelines, follow-up queues, activity notes, and schedules.
+ */
 export class CrmController {
   constructor(
     private readonly crmService: CrmService = new CrmService(),
     private readonly tenantGuard: ITenantGuard = defaultTenantGuard
   ) {}
 
+  /**
+   * Creates a lead manually from the internal CRM dashboard and attributes the action to the authenticated staff member.
+   */
   createLeadInternal = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.crmService.createLeadInternal(req.body, req.user!.id);
@@ -19,6 +25,9 @@ export class CrmController {
     }
   };
 
+  /**
+   * Lists paginated leads for the authorized tenant with optional status, assignee, and keyword filters.
+   */
   getLeads = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -43,6 +52,9 @@ export class CrmController {
     }
   };
 
+  /**
+   * Returns active leads with follow-up dates due at or before the end of the current day.
+   */
   getFollowUpToday = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -55,6 +67,9 @@ export class CrmController {
     }
   };
 
+  /**
+   * Retrieves a single lead alongside its notes and schedules, enforcing tenant isolation.
+   */
   getLeadById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
@@ -67,6 +82,9 @@ export class CrmController {
     }
   };
 
+  /**
+   * Updates lead pipeline fields after verifying the client's optimistic lock timestamp.
+   */
   updateLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
@@ -86,6 +104,9 @@ export class CrmController {
     }
   };
 
+  /**
+   * Appends an internal note to a lead within the caller's authorized tenant.
+   */
   addLeadNote = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
@@ -99,7 +120,9 @@ export class CrmController {
     }
   };
 
-  // --- SCHEDULES ---
+  /**
+   * Lists consultation schedules for the authorized tenant, optionally filtered by assigned PIC.
+   */
   getSchedules = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
@@ -112,6 +135,9 @@ export class CrmController {
     }
   };
 
+  /**
+   * Creates a consultation schedule linked to a lead and records an activity log entry.
+   */
   createSchedule = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.crmService.createSchedule(req.body, req.user!.id);
@@ -121,6 +147,9 @@ export class CrmController {
     }
   };
 
+  /**
+   * Updates schedule timing, PIC, or outcome after verifying the optimistic lock timestamp.
+   */
   updateSchedule = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id as string;
