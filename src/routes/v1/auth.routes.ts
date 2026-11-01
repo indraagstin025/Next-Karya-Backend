@@ -3,6 +3,10 @@ import { appContainer, AppContainer } from "../../container";
 import { validateBody, validateParams, idParamSchema } from "../../middlewares/validate";
 import { loginSchema, revokeSessionsSchema } from "../../validators/auth";
 
+/**
+ * Creates the `/auth` router with IP-based brute-force rate limiting on `/login`
+ * and JWT authentication on profile and session revocation endpoints.
+ */
 export function createAuthRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { auth: authController } = container.controllers;
