@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { CmsService } from "../services/cms.service";
 import { sendSuccess, sendPaginated, sendError } from "../utils/response";
-import { checkOptimisticLock, resolveAuthorizedSiteId } from "../utils/optimistic";
-
-const cmsService = new CmsService();
+import { checkOptimisticLock, defaultTenantGuard } from "../utils/optimistic";
+import { ITenantGuard } from "../container/types";
 
 function extractUpdatedAt(req: Request): string | undefined {
   return (
@@ -15,31 +14,36 @@ function extractUpdatedAt(req: Request): string | undefined {
 }
 
 export class CmsController {
+  constructor(
+    private readonly cmsService: CmsService = new CmsService(),
+    private readonly tenantGuard: ITenantGuard = defaultTenantGuard
+  ) {}
+
   // Categories
-  async getCategories(req: Request, res: Response, next: NextFunction) {
+  getCategories = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const items = await cmsService.getCategories(site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const items = await this.cmsService.getCategories(site_id);
       return sendSuccess(res, items);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createCategory(req: Request, res: Response, next: NextFunction) {
+  createCategory = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createCategory(site_id, req.body);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createCategory(site_id, req.body);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async updateCategory(req: Request, res: Response, next: NextFunction) {
+  updateCategory = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.updateCategory(
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.updateCategory(
         req.params.id as string,
         site_id,
         req.body
@@ -48,29 +52,29 @@ export class CmsController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async deleteCategory(req: Request, res: Response, next: NextFunction) {
+  deleteCategory = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
-      const result = await cmsService.deleteCategory(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
+      const result = await this.cmsService.deleteCategory(req.params.id as string, site_id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // Posts (Articles)
-  async getPosts(req: Request, res: Response, next: NextFunction) {
+  getPosts = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const status = req.query.status as "DRAFT" | "PUBLISHED" | "ARCHIVED" | undefined;
       const category = req.query.category as string | undefined;
       const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
       const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 20), 100);
       const search = req.query.search as string | undefined;
 
-      const { items, meta } = await cmsService.getPosts({
+      const { items, meta } = await this.cmsService.getPosts({
         site_id,
         status,
         category,
@@ -82,34 +86,34 @@ export class CmsController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getPostById(req: Request, res: Response, next: NextFunction) {
+  getPostById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const item = await cmsService.getPostById(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const item = await this.cmsService.getPostById(req.params.id as string, site_id);
       if (!item) return sendError(res, 404, "NOT_FOUND", "Artikel tidak ditemukan.");
       return sendSuccess(res, item);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createPost(req: Request, res: Response, next: NextFunction) {
+  createPost = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createPost(site_id, req.body, req.user!.id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createPost(site_id, req.body, req.user!.id);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async updatePost(req: Request, res: Response, next: NextFunction) {
+  updatePost = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPostById(id, site_id);
+      const current = await this.cmsService.getPostById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Artikel tidak ditemukan.");
 
       const isAllowed = checkOptimisticLock(
@@ -120,18 +124,18 @@ export class CmsController {
       );
       if (!isAllowed) return;
 
-      const result = await cmsService.updatePost(id, site_id, req.body, req.user!.id);
+      const result = await this.cmsService.updatePost(id, site_id, req.body, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async publishPost(req: Request, res: Response, next: NextFunction) {
+  publishPost = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPostById(id, site_id);
+      const current = await this.cmsService.getPostById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Artikel tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -140,18 +144,18 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.publishPost(id, site_id, req.user!.id);
+      const result = await this.cmsService.publishPost(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async archivePost(req: Request, res: Response, next: NextFunction) {
+  archivePost = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPostById(id, site_id);
+      const current = await this.cmsService.getPostById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Artikel tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -160,23 +164,23 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.archivePost(id, site_id, req.user!.id);
+      const result = await this.cmsService.archivePost(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // Portfolios
-  async getPortfolios(req: Request, res: Response, next: NextFunction) {
+  getPortfolios = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const status = req.query.status as "DRAFT" | "PUBLISHED" | "ARCHIVED" | undefined;
       const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
       const limit = Math.min(Math.max(1, parseInt(req.query.limit as string, 10) || 20), 100);
       const search = req.query.search as string | undefined;
 
-      const { items, meta } = await cmsService.getPortfolios({
+      const { items, meta } = await this.cmsService.getPortfolios({
         site_id,
         status,
         page,
@@ -187,34 +191,34 @@ export class CmsController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getPortfolioById(req: Request, res: Response, next: NextFunction) {
+  getPortfolioById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const item = await cmsService.getPortfolioById(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const item = await this.cmsService.getPortfolioById(req.params.id as string, site_id);
       if (!item) return sendError(res, 404, "NOT_FOUND", "Portofolio tidak ditemukan.");
       return sendSuccess(res, item);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createPortfolio(req: Request, res: Response, next: NextFunction) {
+  createPortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createPortfolio(site_id, req.body, req.user!.id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createPortfolio(site_id, req.body, req.user!.id);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async updatePortfolio(req: Request, res: Response, next: NextFunction) {
+  updatePortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPortfolioById(id, site_id);
+      const current = await this.cmsService.getPortfolioById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Portofolio tidak ditemukan.");
 
       const isAllowed = checkOptimisticLock(
@@ -225,18 +229,18 @@ export class CmsController {
       );
       if (!isAllowed) return;
 
-      const result = await cmsService.updatePortfolio(id, site_id, req.body, req.user!.id);
+      const result = await this.cmsService.updatePortfolio(id, site_id, req.body, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async publishPortfolio(req: Request, res: Response, next: NextFunction) {
+  publishPortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPortfolioById(id, site_id);
+      const current = await this.cmsService.getPortfolioById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Portofolio tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -245,18 +249,18 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.publishPortfolio(id, site_id, req.user!.id);
+      const result = await this.cmsService.publishPortfolio(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async archivePortfolio(req: Request, res: Response, next: NextFunction) {
+  archivePortfolio = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPortfolioById(id, site_id);
+      const current = await this.cmsService.getPortfolioById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Portofolio tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -265,51 +269,51 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.archivePortfolio(id, site_id, req.user!.id);
+      const result = await this.cmsService.archivePortfolio(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // Services
-  async getServices(req: Request, res: Response, next: NextFunction) {
+  getServices = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const status = req.query.status as "DRAFT" | "PUBLISHED" | "ARCHIVED" | undefined;
-      const items = await cmsService.getServices(site_id, status);
+      const items = await this.cmsService.getServices(site_id, status);
       return sendSuccess(res, items);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getServiceById(req: Request, res: Response, next: NextFunction) {
+  getServiceById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const item = await cmsService.getServiceById(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const item = await this.cmsService.getServiceById(req.params.id as string, site_id);
       if (!item) return sendError(res, 404, "NOT_FOUND", "Layanan tidak ditemukan.");
       return sendSuccess(res, item);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createService(req: Request, res: Response, next: NextFunction) {
+  createService = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createService(site_id, req.body, req.user!.id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createService(site_id, req.body, req.user!.id);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async updateService(req: Request, res: Response, next: NextFunction) {
+  updateService = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getServiceById(id, site_id);
+      const current = await this.cmsService.getServiceById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Layanan tidak ditemukan.");
 
       const isAllowed = checkOptimisticLock(
@@ -320,18 +324,18 @@ export class CmsController {
       );
       if (!isAllowed) return;
 
-      const result = await cmsService.updateService(id, site_id, req.body, req.user!.id);
+      const result = await this.cmsService.updateService(id, site_id, req.body, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async publishService(req: Request, res: Response, next: NextFunction) {
+  publishService = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getServiceById(id, site_id);
+      const current = await this.cmsService.getServiceById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Layanan tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -340,18 +344,18 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.publishService(id, site_id, req.user!.id);
+      const result = await this.cmsService.publishService(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async archiveService(req: Request, res: Response, next: NextFunction) {
+  archiveService = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getServiceById(id, site_id);
+      const current = await this.cmsService.getServiceById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Layanan tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -360,51 +364,51 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.archiveService(id, site_id, req.user!.id);
+      const result = await this.cmsService.archiveService(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // Pages
-  async getPages(req: Request, res: Response, next: NextFunction) {
+  getPages = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const status = req.query.status as "DRAFT" | "PUBLISHED" | "ARCHIVED" | undefined;
-      const items = await cmsService.getPages(site_id, status);
+      const items = await this.cmsService.getPages(site_id, status);
       return sendSuccess(res, items);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getPageById(req: Request, res: Response, next: NextFunction) {
+  getPageById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const item = await cmsService.getPageById(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const item = await this.cmsService.getPageById(req.params.id as string, site_id);
       if (!item) return sendError(res, 404, "NOT_FOUND", "Halaman tidak ditemukan.");
       return sendSuccess(res, item);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createPage(req: Request, res: Response, next: NextFunction) {
+  createPage = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createPage(site_id, req.body, req.user!.id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createPage(site_id, req.body, req.user!.id);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async updatePage(req: Request, res: Response, next: NextFunction) {
+  updatePage = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPageById(id, site_id);
+      const current = await this.cmsService.getPageById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Halaman tidak ditemukan.");
 
       const isAllowed = checkOptimisticLock(
@@ -415,18 +419,18 @@ export class CmsController {
       );
       if (!isAllowed) return;
 
-      const result = await cmsService.updatePage(id, site_id, req.body, req.user!.id);
+      const result = await this.cmsService.updatePage(id, site_id, req.body, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async publishPage(req: Request, res: Response, next: NextFunction) {
+  publishPage = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPageById(id, site_id);
+      const current = await this.cmsService.getPageById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Halaman tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -435,18 +439,18 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.publishPage(id, site_id, req.user!.id);
+      const result = await this.cmsService.publishPage(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async archivePage(req: Request, res: Response, next: NextFunction) {
+  archivePage = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getPageById(id, site_id);
+      const current = await this.cmsService.getPageById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Halaman tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -455,50 +459,50 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.archivePage(id, site_id, req.user!.id);
+      const result = await this.cmsService.archivePage(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // FAQs
-  async getFaqs(req: Request, res: Response, next: NextFunction) {
+  getFaqs = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const items = await cmsService.getFaqs(site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const items = await this.cmsService.getFaqs(site_id);
       return sendSuccess(res, items);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getFaqById(req: Request, res: Response, next: NextFunction) {
+  getFaqById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const item = await cmsService.getFaqById(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const item = await this.cmsService.getFaqById(req.params.id as string, site_id);
       if (!item) return sendError(res, 404, "NOT_FOUND", "FAQ tidak ditemukan.");
       return sendSuccess(res, item);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createFaq(req: Request, res: Response, next: NextFunction) {
+  createFaq = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createFaq(site_id, req.body, req.user!.id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createFaq(site_id, req.body, req.user!.id);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async updateFaq(req: Request, res: Response, next: NextFunction) {
+  updateFaq = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getFaqById(id, site_id);
+      const current = await this.cmsService.getFaqById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "FAQ tidak ditemukan.");
 
       const isAllowed = checkOptimisticLock(
@@ -509,61 +513,61 @@ export class CmsController {
       );
       if (!isAllowed) return;
 
-      const result = await cmsService.updateFaq(id, site_id, req.body, req.user!.id);
+      const result = await this.cmsService.updateFaq(id, site_id, req.body, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async deleteFaq(req: Request, res: Response, next: NextFunction) {
+  deleteFaq = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
-      const result = await cmsService.deleteFaq(req.params.id as string, site_id, req.user!.id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
+      const result = await this.cmsService.deleteFaq(req.params.id as string, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // Testimonials
-  async getTestimonials(req: Request, res: Response, next: NextFunction) {
+  getTestimonials = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const status = req.query.status as "DRAFT" | "PUBLISHED" | "ARCHIVED" | undefined;
-      const items = await cmsService.getTestimonials(site_id, status);
+      const items = await this.cmsService.getTestimonials(site_id, status);
       return sendSuccess(res, items);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async getTestimonialById(req: Request, res: Response, next: NextFunction) {
+  getTestimonialById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const item = await cmsService.getTestimonialById(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const item = await this.cmsService.getTestimonialById(req.params.id as string, site_id);
       if (!item) return sendError(res, 404, "NOT_FOUND", "Testimoni tidak ditemukan.");
       return sendSuccess(res, item);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createTestimonial(req: Request, res: Response, next: NextFunction) {
+  createTestimonial = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createTestimonial(site_id, req.body, req.user!.id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createTestimonial(site_id, req.body, req.user!.id);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async updateTestimonial(req: Request, res: Response, next: NextFunction) {
+  updateTestimonial = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getTestimonialById(id, site_id);
+      const current = await this.cmsService.getTestimonialById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Testimoni tidak ditemukan.");
 
       const isAllowed = checkOptimisticLock(
@@ -574,18 +578,18 @@ export class CmsController {
       );
       if (!isAllowed) return;
 
-      const result = await cmsService.updateTestimonial(id, site_id, req.body, req.user!.id);
+      const result = await this.cmsService.updateTestimonial(id, site_id, req.body, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async archiveTestimonial(req: Request, res: Response, next: NextFunction) {
+  archiveTestimonial = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
       const id = req.params.id as string;
-      const current = await cmsService.getTestimonialById(id, site_id);
+      const current = await this.cmsService.getTestimonialById(id, site_id);
       if (!current) return sendError(res, 404, "NOT_FOUND", "Testimoni tidak ditemukan.");
 
       const reqUpdatedAt = extractUpdatedAt(req);
@@ -594,30 +598,30 @@ export class CmsController {
         if (!isAllowed) return;
       }
 
-      const result = await cmsService.archiveTestimonial(id, site_id, req.user!.id);
+      const result = await this.cmsService.archiveTestimonial(id, site_id, req.user!.id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // Snapshots
-  async getSnapshots(req: Request, res: Response, next: NextFunction) {
+  getSnapshots = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
       const entityType = req.query.entityType as string | undefined;
       const entityId = req.query.entityId as string | undefined;
-      const items = await cmsService.getSnapshots({ site_id, entityType, entityId });
+      const items = await this.cmsService.getSnapshots({ site_id, entityType, entityId });
       return sendSuccess(res, items);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async restoreSnapshot(req: Request, res: Response, next: NextFunction) {
+  restoreSnapshot = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
-      const result = await cmsService.restoreSnapshot(
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body?.site_id ?? req.query.site_id);
+      const result = await this.cmsService.restoreSnapshot(
         req.params.id as string,
         site_id,
         req.user!.id
@@ -626,36 +630,36 @@ export class CmsController {
     } catch (err) {
       next(err);
     }
-  }
+  };
 
   // Redirects
-  async getRedirects(req: Request, res: Response, next: NextFunction) {
+  getRedirects = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id);
-      const items = await cmsService.getRedirects(site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const items = await this.cmsService.getRedirects(site_id);
       return sendSuccess(res, items);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async createRedirect(req: Request, res: Response, next: NextFunction) {
+  createRedirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
-      const result = await cmsService.createRedirect(site_id, req.body);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.body.site_id ?? req.query.site_id);
+      const result = await this.cmsService.createRedirect(site_id, req.body);
       return sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
     }
-  }
+  };
 
-  async deleteRedirect(req: Request, res: Response, next: NextFunction) {
+  deleteRedirect = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const site_id = resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
-      const result = await cmsService.deleteRedirect(req.params.id as string, site_id);
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id ?? req.body?.site_id);
+      const result = await this.cmsService.deleteRedirect(req.params.id as string, site_id);
       return sendSuccess(res, result);
     } catch (err) {
       next(err);
     }
-  }
+  };
 }
