@@ -1,14 +1,18 @@
 import { Router } from "express";
-import { AnalyticsController } from "../../controllers/analytics.controller";
-import { requireAuth } from "../../middlewares/auth";
+import { appContainer, AppContainer } from "../../container";
 
-const router = Router();
-const analyticsController = new AnalyticsController();
+export function createAnalyticsRouter(container: AppContainer = appContainer): Router {
+  const router = Router();
+  const { analytics: analyticsController } = container.controllers;
+  const { requireAuth } = container.middlewares;
 
-router.use(requireAuth);
+  router.use(requireAuth);
 
-router.get("/overview", analyticsController.getOverview);
-router.get("/pages", analyticsController.getPages);
-router.get("/sources", analyticsController.getSources);
+  router.get("/overview", analyticsController.getOverview);
+  router.get("/pages", analyticsController.getPages);
+  router.get("/sources", analyticsController.getSources);
 
-export default router;
+  return router;
+}
+
+export default createAnalyticsRouter();
