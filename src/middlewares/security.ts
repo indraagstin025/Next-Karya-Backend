@@ -13,6 +13,10 @@ declare global {
 
 const FORBIDDEN_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+/**
+ * Recursively scans request payloads up to depth 8 for prototype-pollution keys
+ * (`__proto__`, `constructor`, `prototype`) or embedded null bytes (`\0`).
+ */
 function hasForbiddenKeysOrNullBytes(input: unknown, depth = 0): boolean {
   if (depth > 8 || input === null || input === undefined) {
     return false;
@@ -37,9 +41,13 @@ function hasForbiddenKeysOrNullBytes(input: unknown, depth = 0): boolean {
   return false;
 }
 
+/**
+ * Builds the global HTTP security middleware that attaches an `X-Request-Id` correlation header,
+ * enforces `Cache-Control: no-store` on protected/mutation endpoints, flattens duplicate query
+ * arrays (HTTP Parameter Pollution defense), and blocks prototype-pollution or null-byte payloads.
+ */
 export function createSecurityMiddleware(logger: ILogger = defaultLogger) {
   return (req: Request, res: Response, next: NextFunction) => {
-    // 1. Request Correlation ID
     const incomingReqId = req.headers["x-request-id"];
     const requestId =
       typeof incomingReqId === "string" &&
@@ -50,7 +58,6 @@ export function createSecurityMiddleware(logger: ILogger = defaultLogger) {
     req.requestId = requestId;
     res.setHeader("X-Request-Id", requestId);
 
-    // 2. Hardened Security Headers
     res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
     res.setHeader(
       "Permissions-Policy",
@@ -69,7 +76,6 @@ export function createSecurityMiddleware(logger: ILogger = defaultLogger) {
       res.setHeader("Pragma", "no-cache");
     }
 
-    // 3. Null-byte injection check on URL
     if (req.originalUrl.includes("\0") || req.originalUrl.includes("%00")) {
       logger.security("NULL_BYTE_URL_BLOCKED", {
         requestId,
@@ -79,7 +85,7 @@ export function createSecurityMiddleware(logger: ILogger = defaultLogger) {
       return sendError(res, 400, "BAD_REQUEST", "Permintaan mengandung karakter ilegal.");
     }
 
-    // 4. HTTP Parameter Pollution (HPP) Normalization on req.query
+    // Flatten duplicate query parameters to the last value to prevent HPP type confusion.
     if (req.query && typeof req.query === "object") {
       for (const [key, val] of Object.entries(req.query)) {
         if (Array.isArray(val)) {
@@ -90,7 +96,6 @@ export function createSecurityMiddleware(logger: ILogger = defaultLogger) {
       }
     }
 
-    // 5. Prototype Pollution & Null-Byte Inspection on query, params, and body
     if (
       hasForbiddenKeysOrNullBytes(req.query) ||
       hasForbiddenKeysOrNullBytes(req.params) ||
