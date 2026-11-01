@@ -17,6 +17,10 @@ export interface MediaServiceDeps {
   logger: ILogger;
 }
 
+/**
+ * Manages uploaded media metadata in PostgreSQL, SHA-256 content deduplication,
+ * and safe filesystem deletion.
+ */
 export class MediaService {
   constructor(
     private readonly deps: MediaServiceDeps = {
@@ -27,6 +31,9 @@ export class MediaService {
     }
   ) {}
 
+  /**
+   * Lists paginated media library records scoped to `site_id`, optionally filtered by MIME type or search keyword.
+   */
   async getMedia(query: {
     site_id?: string;
     search?: string;
@@ -70,6 +77,10 @@ export class MediaService {
     return { items, meta };
   }
 
+  /**
+   * Checks whether an identical file already exists in the tenant's media library by narrowing
+   * candidates with matching `fileSize` and comparing their on-disk SHA-256 checksums.
+   */
   async findDuplicateMedia(
     rawSiteId: string | undefined,
     fileSize: number,
@@ -105,13 +116,17 @@ export class MediaService {
             return cand;
           }
         } catch {
-          // continue checking other candidates
+          // Ignore unreadable candidate file and continue scanning.
         }
       }
     }
     return null;
   }
 
+  /**
+   * Persists metadata for a validated upload in PostgreSQL, stripping any directory components
+   * from `fileName` via `path.basename` to guarantee safe static serving under `/uploads`.
+   */
   async saveUploadedFile(
     file: Express.Multer.File,
     rawSiteId: string | undefined,
@@ -146,6 +161,10 @@ export class MediaService {
     return media;
   }
 
+  /**
+   * Deletes a media asset from PostgreSQL and unlinks its file from disk only if no post
+   * (`coverUrl`) or portfolio (`thumbnailUrl`) currently references its URL.
+   */
   async deleteMedia(id: string, rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const media = await this.deps.prisma.media.findFirst({
