@@ -15,6 +15,9 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default("./uploads"),
 });
 
+/**
+ * Runtime environment configuration schema with strict validation rules and type inference.
+ */
 export type EnvConfig = z.infer<typeof envSchema>;
 
 const parsed = envSchema.safeParse(process.env);
@@ -24,4 +27,7 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+/**
+ * Validated, immutable environment configuration singleton.
+ */
 export const env: EnvConfig = parsed.data;
