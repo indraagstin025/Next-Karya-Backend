@@ -15,6 +15,8 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().default("./uploads"),
 });
 
+export type EnvConfig = z.infer<typeof envSchema>;
+
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
@@ -22,4 +24,4 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env: EnvConfig = parsed.data;
