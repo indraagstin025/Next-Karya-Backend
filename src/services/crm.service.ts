@@ -12,6 +12,10 @@ export interface CrmServiceDeps {
   logger: ILogger;
 }
 
+/**
+ * Manages CRM leads, follow-up agendas, interaction logs, and Gantt project schedules
+ * with strict tenant isolation (`site_id`) and explicit field allowlisting.
+ */
 export class CrmService {
   constructor(
     private readonly deps: CrmServiceDeps = {
@@ -21,6 +25,10 @@ export class CrmService {
     }
   ) {}
 
+  /**
+   * Creates a lead manually from the internal CRM dashboard, converts `dealValue` to `BigInt`
+   * for storage, and records an initial `LEAD_STATUS_CHANGED` entry in `ActivityLog`.
+   */
   async createLeadInternal(payload: any, recordedById: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
 
@@ -62,6 +70,9 @@ export class CrmService {
     };
   }
 
+  /**
+   * Queries paginated leads scoped to `site_id`, converting `BigInt` deal values to JSON-safe numbers.
+   */
   async getLeads(query: {
     site_id?: string;
     status?: "BARU" | "DIHUBUNGI" | "PROPOSAL" | "DEAL" | "BATAL";
@@ -113,6 +124,10 @@ export class CrmService {
     return { items, meta };
   }
 
+  /**
+   * Fetches a single lead by `{ id, site_id }` along with its chronological interaction notes,
+   * linked project schedules, and audit activity trail.
+   */
   async getLeadById(id: string, rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
 
@@ -149,6 +164,10 @@ export class CrmService {
     };
   }
 
+  /**
+   * Updates allowed lead properties within the authorized `site_id` and writes audit logs
+   * whenever the pipeline stage (`status`) or PIC (`assignedToId`) changes.
+   */
   async updateLead(id: string, payload: any, editorId: string, rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(
       payload?.site_id ?? rawSiteId
@@ -160,7 +179,6 @@ export class CrmService {
       throw AppError.notFound("Data prospek tidak ditemukan.");
     }
 
-    // Explicit allowlist field mapping to prevent Mass Assignment
     const dataToUpdate: Record<string, unknown> = {
       lastEditedById: editorId,
     };
@@ -228,6 +246,9 @@ export class CrmService {
     };
   }
 
+  /**
+   * Appends a timestamped communication note (`InteractionLog`) to a lead after verifying tenant ownership.
+   */
   async addLeadNote(
     leadId: string,
     payload: { site_id?: string; channel?: string; notes: string },
@@ -259,9 +280,12 @@ export class CrmService {
     return note;
   }
 
+  /**
+   * Returns active leads (`BARU`, `DIHUBUNGI`, `PROPOSAL`) whose `nextFollowUpDate` is due today
+   * or overdue in WIB (UTC+7), tagging each item as `DUE_TODAY` or `OVERDUE`.
+   */
   async getFollowUpToday(rawSiteId?: string, assignedToId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
-    // Current date in WIB (UTC+7)
     const nowWib = new Date(Date.now() + 7 * 60 * 60 * 1000);
     const currentDateStr = nowWib.toISOString().slice(0, 10);
     const endOfToday = new Date(`${currentDateStr}T23:59:59.999Z`);
@@ -316,7 +340,9 @@ export class CrmService {
     });
   }
 
-  // --- SCHEDULES ---
+  /**
+   * Fetches a single project schedule by `{ id, site_id }` for optimistic lock verification.
+   */
   async getScheduleById(id: string, rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     return this.deps.prisma.projectSchedule.findFirst({
@@ -328,6 +354,9 @@ export class CrmService {
     });
   }
 
+  /**
+   * Lists project schedules for the Gantt timeline ordered by `startDate` ascending.
+   */
   async getSchedules(rawSiteId?: string, assignedToId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const where: any = { site_id };
@@ -343,6 +372,9 @@ export class CrmService {
     });
   }
 
+  /**
+   * Creates a new project schedule entry linked to a staff member and optional lead.
+   */
   async createSchedule(payload: any, editorId: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
 
@@ -363,6 +395,9 @@ export class CrmService {
     });
   }
 
+  /**
+   * Updates allowed schedule fields within the authorized `site_id` after optimistic lock validation.
+   */
   async updateSchedule(id: string, payload: any, editorId: string, rawSiteId?: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(
       payload?.site_id ?? rawSiteId
@@ -374,7 +409,6 @@ export class CrmService {
       throw AppError.notFound("Jadwal tidak ditemukan.");
     }
 
-    // Explicit allowlist field mapping to prevent Mass Assignment
     const dataToUpdate: Record<string, unknown> = {
       lastEditedById: editorId,
     };
