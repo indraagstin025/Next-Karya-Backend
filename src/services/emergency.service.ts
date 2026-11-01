@@ -13,6 +13,10 @@ export interface EmergencyServiceDeps {
   logger: ILogger;
 }
 
+/**
+ * Executes high-priority operational overrides (emergency content takedown, contact form lockdown,
+ * site-wide alert banners, and emergency lead reassignment) with mandatory audit logging.
+ */
 export class EmergencyService {
   constructor(
     private readonly deps: EmergencyServiceDeps = {
@@ -23,6 +27,9 @@ export class EmergencyService {
     }
   ) {}
 
+  /**
+   * Returns current site operational flags alongside recent `EmergencyAuditLog` and `ActivityLog` records.
+   */
   async getEmergencyOverview(rawSiteId?: string, limit = 30) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -70,6 +77,10 @@ export class EmergencyService {
     };
   }
 
+  /**
+   * Immediately reverts a published post, portfolio, service, or page to `DRAFT`, triggers
+   * Next.js cache revalidation, and records both an `EmergencyAuditLog` and `ActivityLog`.
+   */
   async unpublishContent(payload: {
     site_id?: string;
     targetEntity: "POST" | "PORTFOLIO" | "SERVICE" | "PAGE";
@@ -173,6 +184,10 @@ export class EmergencyService {
     };
   }
 
+  /**
+   * Disables public lead intake (`isFormLocked = true`) during spam attacks or maintenance,
+   * redirecting visitors to official WhatsApp channels.
+   */
   async lockContactForm(payload: {
     site_id?: string;
     reason: string;
@@ -224,6 +239,9 @@ export class EmergencyService {
     };
   }
 
+  /**
+   * Re-enables the public consultation form (`isFormLocked = false`) and logs the audit trail.
+   */
   async unlockContactForm(payload: {
     site_id?: string;
     reason: string;
@@ -275,6 +293,9 @@ export class EmergencyService {
     };
   }
 
+  /**
+   * Activates or clears the site-wide announcement banner (`alertBanner`) and triggers frontend revalidation.
+   */
   async setAlertBanner(payload: {
     site_id?: string;
     isActive: boolean;
@@ -332,6 +353,10 @@ export class EmergencyService {
     };
   }
 
+  /**
+   * Transfers ownership of an active lead to another active staff member when the original PIC
+   * is unavailable, recording an immutable `REASSIGN_STAFF` audit log.
+   */
   async reassignLead(
     leadId: string,
     payload: {
