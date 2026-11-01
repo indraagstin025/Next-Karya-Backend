@@ -23,6 +23,7 @@ Seluruh pengembangan fitur, pemodelan skema database, penulisan API, dan peranca
 | [analytics-v2.2.md](./analytics-v2.2.md) | **v2.2 Kanonik** | Mesin Pengukur Trafik Ringan (< 2 KB), Proteksi Bot, Konversi WA, Ingesti Redis, & Rollup Jam. | Tim Internal (Desktop & Mobile) |
 | [crm-v2.2.md](./crm-v2.2.md) | **v2.2 Kanonik** | Kotak Masuk Prospek (*Leads*), Agenda Follow-Up Harian, Pipeline Penjualan 5 Tahap, & Timeline Tim. | Tim Internal (Desktop & Mobile) |
 | [architecture-desktop-vs-mobile-v1.1.md](./architecture-desktop-vs-mobile-v1.1.md) | **v1.1 Kanonik** | Pembagian Peran Desktop Web vs Mobile Flutter (*Action Companion*), Emergency Toolkit Fase 1. | Seluruh Tim Pengembang (Web & Mobile Flutter) |
+| [status-implementasi-dashboard-cms-v1.0.md](./status-implementasi-dashboard-cms-v1.0.md) | **v1.0 Kanonik** | Laporan Audit Kesiapan Fitur Selesai Fase 1 (MVP) Dashboard Analitik & CMS Terintegrasi. | Seluruh Tim Rekayasa & Manajemen |
 
 > [!NOTE]
 > Seluruh berkas spesifikasi versi lama (v1.0 dan v2.0) telah dipindahkan ke direktori `docs/archive/` sebagai arsip historis. Tim dilarang melakukan modifikasi pada berkas di dalam folder arsip tersebut.
