@@ -4,8 +4,10 @@ import { validateBody, validateParams, slugParamSchema } from "../../middlewares
 import { hasBearerAuth } from "../../middlewares/auth";
 import { createLeadPublicSchema, analyticsEventSchema } from "../../validators/public";
 
-// When a request carries a Bearer token or ?scope=cms, skip the public handler
-// so the authenticated CMS route handler processes it (including DRAFT/ARCHIVED items).
+/**
+ * Delegates shared root paths (such as `/portfolios` or `/categories`) to the authenticated
+ * CMS router whenever a request carries a Bearer token or `?scope=cms`.
+ */
 function skipIfAuthenticatedCms(req: Request, _res: Response, next: NextFunction) {
   if (hasBearerAuth(req) || req.query.scope === "cms") {
     return next("route");
@@ -13,6 +15,10 @@ function skipIfAuthenticatedCms(req: Request, _res: Response, next: NextFunction
   return next();
 }
 
+/**
+ * Creates the public content and intake router with tiered rate limiting for reads,
+ * lead submissions, and analytics beacons.
+ */
 export function createPublicRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { public: publicController } = container.controllers;
@@ -20,12 +26,10 @@ export function createPublicRouter(container: AppContainer = appContainer): Rout
 
   const readRateLimiter = rateLimiter({ windowSec: 60, maxRequests: 120, prefix: "rl_read" });
 
-  // Public Site Status & Redirect Lookup
   router.get("/site-status", readRateLimiter, publicController.getSiteStatus);
   router.get("/redirects/lookup", readRateLimiter, publicController.lookupRedirect);
   router.get("/categories", skipIfAuthenticatedCms, readRateLimiter, publicController.getCategories);
 
-  // Public Articles
   router.get("/articles", readRateLimiter, publicController.getArticles);
   router.get(
     "/articles/:slug",
@@ -34,7 +38,6 @@ export function createPublicRouter(container: AppContainer = appContainer): Rout
     publicController.getArticleBySlug
   );
 
-  // Public Portfolios
   router.get("/portfolios", skipIfAuthenticatedCms, readRateLimiter, publicController.getPortfolios);
   router.get(
     "/portfolios/:slug",
@@ -44,7 +47,6 @@ export function createPublicRouter(container: AppContainer = appContainer): Rout
     publicController.getPortfolioBySlug
   );
 
-  // Public Services, FAQs & Testimonials
   router.get("/services", skipIfAuthenticatedCms, readRateLimiter, publicController.getServices);
   router.get("/faqs", skipIfAuthenticatedCms, readRateLimiter, publicController.getFaqs);
   router.get(
@@ -54,7 +56,6 @@ export function createPublicRouter(container: AppContainer = appContainer): Rout
     publicController.getTestimonials
   );
 
-  // Public Pages
   router.get(
     "/pages/:slug",
     skipIfAuthenticatedCms,
@@ -63,7 +64,6 @@ export function createPublicRouter(container: AppContainer = appContainer): Rout
     publicController.getPageBySlug
   );
 
-  // Intake: Public Form Leads (5 req/15 min)
   router.post(
     "/leads",
     rateLimiter({ windowSec: 900, maxRequests: 5, prefix: "rl_lead" }),
@@ -71,7 +71,6 @@ export function createPublicRouter(container: AppContainer = appContainer): Rout
     publicController.submitLead
   );
 
-  // Intake: Analytics Beacon (60 req/min)
   router.post(
     "/analytics/event",
     rateLimiter({ windowSec: 60, maxRequests: 60, prefix: "rl_analytics" }),
