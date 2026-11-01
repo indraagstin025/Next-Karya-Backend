@@ -24,6 +24,10 @@ const defaultCmsDeps: CmsServiceDeps = {
   logger: defaultLogger,
 };
 
+/**
+ * Estimates article reading time in minutes based on a 180-words-per-minute reading speed,
+ * clamped between 1 and 60 minutes.
+ */
 function estimateReadingTimeMinutes(content: unknown): number {
   try {
     const rawText = typeof content === "string" ? content : JSON.stringify(content ?? "");
@@ -38,6 +42,10 @@ function estimateReadingTimeMinutes(content: unknown): number {
   }
 }
 
+/**
+ * Orchestrates CMS content lifecycles (`DRAFT` -> `PUBLISHED` -> `ARCHIVED`),
+ * 5-version FIFO content snapshots, cache invalidation, and Next.js ISR webhook notifications.
+ */
 export class CmsService {
   private readonly deps: CmsServiceDeps;
 
@@ -45,6 +53,10 @@ export class CmsService {
     this.deps = { ...defaultCmsDeps, ...deps };
   }
 
+  /**
+   * Evicts Redis CMS cache keys for the given tag and triggers an asynchronous Next.js
+   * ISR revalidation webhook without blocking the caller if the frontend is unreachable.
+   */
   private async invalidateCmsCache(site_id: string, tag: string) {
     await Promise.allSettled([
       this.deps.cache.del(`cache:cms:${site_id}:${tag}`),
@@ -58,6 +70,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Calculates the next sequential snapshot version number (`latest + 1`) for an entity prior to publishing.
+   */
   private async nextSnapshotVersion(site_id: string, entityType: string, entityId: string): Promise<number> {
     const latest = await this.deps.prisma.contentSnapshot.findFirst({
       where: { site_id, entityType, entityId },
@@ -67,7 +82,9 @@ export class CmsService {
     return (latest?.version ?? 0) + 1;
   }
 
-  // Categories
+  /**
+   * Lists all article categories for the given `site_id` along with their linked post counts.
+   */
   async getCategories(site_id: string) {
     return this.deps.prisma.category.findMany({
       where: { site_id },
@@ -80,6 +97,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Creates a new article category scoped to `site_id`.
+   */
   async createCategory(site_id: string, payload: { name: string; slug: string }) {
     return this.deps.prisma.category.create({
       data: {
@@ -90,6 +110,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Updates a category's name or slug after verifying it belongs to the active `site_id`.
+   */
   async updateCategory(id: string, site_id: string, payload: { name?: string; slug?: string }) {
     const existing = await this.deps.prisma.category.findFirst({
       where: { id, site_id },
@@ -107,6 +130,10 @@ export class CmsService {
     });
   }
 
+  /**
+   * Deletes an article category only when its post count is zero, throwing `CATEGORY_IN_USE` (HTTP 400)
+   * if any articles still reference it.
+   */
   async deleteCategory(id: string, site_id: string) {
     const existing = await this.deps.prisma.category.findFirst({
       where: { id, site_id },
@@ -126,7 +153,9 @@ export class CmsService {
     return { message: "Kategori berhasil dihapus." };
   }
 
-  // Posts (Articles)
+  /**
+   * Queries paginated blog posts for the CMS dashboard across all workflow states (`DRAFT`, `PUBLISHED`, `ARCHIVED`).
+   */
   async getPosts(query: {
     site_id: string;
     status?: "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -177,6 +206,9 @@ export class CmsService {
     return { items, meta };
   }
 
+  /**
+   * Fetches a single blog post by `{ id, site_id }` including category, author, and last editor details.
+   */
   async getPostById(id: string, site_id: string) {
     return this.deps.prisma.post.findFirst({
       where: { id, site_id },
@@ -188,6 +220,10 @@ export class CmsService {
     });
   }
 
+  /**
+   * Creates a new blog post in `DRAFT` status after verifying that `categoryId` belongs to the same `site_id`
+   * and auto-calculating `readingTimeMinutes` when omitted.
+   */
   async createPost(site_id: string, payload: any, authorId: string) {
     const category = await this.deps.prisma.category.findFirst({
       where: { id: payload.categoryId, site_id },
@@ -230,6 +266,10 @@ export class CmsService {
     });
   }
 
+  /**
+   * Updates an existing blog post's content or metadata and invalidates the `articles` cache
+   * if the post is already in `PUBLISHED` state.
+   */
   async updatePost(id: string, site_id: string, payload: any, editorId: string) {
     const existing = await this.deps.prisma.post.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -288,6 +328,10 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Publishes a blog post inside a database transaction that records a versioned `ContentSnapshot`
+   * and `ActivityLog`, then prunes snapshots beyond the 5-version FIFO cap and invalidates cache.
+   */
   async publishPost(id: string, site_id: string, editorId: string) {
     const post = await this.deps.prisma.post.findFirst({ where: { id, site_id } });
     if (!post) {
@@ -338,6 +382,10 @@ export class CmsService {
     return updatedPost;
   }
 
+  /**
+   * Transitions a blog post to `ARCHIVED` status transactionally with an `ActivityLog` entry
+   * and invalidates public article caches.
+   */
   async archivePost(id: string, site_id: string, editorId: string) {
     const existing = await this.deps.prisma.post.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -372,7 +420,9 @@ export class CmsService {
     return post;
   }
 
-  // Portfolios
+  /**
+   * Queries paginated portfolio items for the CMS dashboard ordered by `sortOrder` and `updatedAt`.
+   */
   async getPortfolios(query: {
     site_id: string;
     status?: "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -418,6 +468,9 @@ export class CmsService {
     return { items, meta };
   }
 
+  /**
+   * Fetches a single portfolio item by `{ id, site_id }`.
+   */
   async getPortfolioById(id: string, site_id: string) {
     return this.deps.prisma.portfolio.findFirst({
       where: { id, site_id },
@@ -427,6 +480,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Creates a new portfolio case study initialized in `DRAFT` status.
+   */
   async createPortfolio(site_id: string, payload: any, editorId: string) {
     return this.deps.prisma.portfolio.create({
       data: {
@@ -454,6 +510,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Updates an existing portfolio case study and invalidates the `portfolios` cache if currently published.
+   */
   async updatePortfolio(id: string, site_id: string, payload: any, editorId: string) {
     const existing = await this.deps.prisma.portfolio.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -494,6 +553,10 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Publishes a portfolio case study transactionally with a `ContentSnapshot` and `ActivityLog`,
+   * enforcing the 5-version snapshot retention window.
+   */
   async publishPortfolio(id: string, site_id: string, editorId: string) {
     const portfolio = await this.deps.prisma.portfolio.findFirst({ where: { id, site_id } });
     if (!portfolio) {
@@ -542,6 +605,9 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Archives a portfolio case study and invalidates public portfolio caches.
+   */
   async archivePortfolio(id: string, site_id: string, editorId: string) {
     const existing = await this.deps.prisma.portfolio.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -575,7 +641,9 @@ export class CmsService {
     return portfolio;
   }
 
-  // Services & Pricing
+  /**
+   * Lists service & pricing packages for the CMS dashboard across optional status filters.
+   */
   async getServices(site_id: string, status?: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
     const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
@@ -590,6 +658,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Fetches a single service package by `{ id, site_id }`.
+   */
   async getServiceById(id: string, site_id: string) {
     return this.deps.prisma.service.findFirst({
       where: { id, site_id },
@@ -599,6 +670,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Creates a new service & pricing package initialized in `DRAFT` status.
+   */
   async createService(site_id: string, payload: any, editorId: string) {
     return this.deps.prisma.service.create({
       data: {
@@ -623,6 +697,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Updates a service package and invalidates the `services` cache if currently published.
+   */
   async updateService(id: string, site_id: string, payload: any, editorId: string) {
     const existing = await this.deps.prisma.service.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -660,6 +737,10 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Publishes a service package transactionally with a `ContentSnapshot` and `ActivityLog`,
+   * pruning older snapshots beyond 5 versions.
+   */
   async publishService(id: string, site_id: string, editorId: string) {
     const service = await this.deps.prisma.service.findFirst({ where: { id, site_id } });
     if (!service) {
@@ -707,6 +788,9 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Archives a service package and invalidates public service caches.
+   */
   async archiveService(id: string, site_id: string, editorId: string) {
     const existing = await this.deps.prisma.service.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -740,7 +824,9 @@ export class CmsService {
     return service;
   }
 
-  // Pages
+  /**
+   * Lists static CMS pages across optional status filters.
+   */
   async getPages(site_id: string, status?: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
     const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
@@ -755,6 +841,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Fetches a single static page by `{ id, site_id }`.
+   */
   async getPageById(id: string, site_id: string) {
     return this.deps.prisma.page.findFirst({
       where: { id, site_id },
@@ -764,6 +853,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Creates a new static page initialized in `DRAFT` status.
+   */
   async createPage(site_id: string, payload: any, editorId: string) {
     return this.deps.prisma.page.create({
       data: {
@@ -782,6 +874,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Updates a static page and invalidates the `pages` cache if currently published.
+   */
   async updatePage(id: string, site_id: string, payload: any, editorId: string) {
     const existing = await this.deps.prisma.page.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -813,6 +908,10 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Publishes a static page transactionally with a `ContentSnapshot` and `ActivityLog`,
+   * enforcing the 5-version FIFO snapshot limit.
+   */
   async publishPage(id: string, site_id: string, editorId: string) {
     const page = await this.deps.prisma.page.findFirst({ where: { id, site_id } });
     if (!page) {
@@ -860,6 +959,9 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Archives a static page and invalidates public page caches.
+   */
   async archivePage(id: string, site_id: string, editorId: string) {
     const existing = await this.deps.prisma.page.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -893,7 +995,9 @@ export class CmsService {
     return page;
   }
 
-  // FAQs (Boolean isActive toggle without publish/archive)
+  /**
+   * Lists all FAQ entries (both active and inactive) for the CMS dashboard.
+   */
   async getFaqs(site_id: string) {
     return this.deps.prisma.faq.findMany({
       where: { site_id },
@@ -904,6 +1008,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Fetches a single FAQ entry by `{ id, site_id }`.
+   */
   async getFaqById(id: string, site_id: string) {
     return this.deps.prisma.faq.findFirst({
       where: { id, site_id },
@@ -913,6 +1020,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Creates a new FAQ entry (`isActive` defaults to `true`) and invalidates the `faqs` cache.
+   */
   async createFaq(site_id: string, payload: any, editorId: string) {
     const created = await this.deps.prisma.faq.create({
       data: {
@@ -933,6 +1043,9 @@ export class CmsService {
     return created;
   }
 
+  /**
+   * Updates an FAQ entry or its `isActive` visibility flag and invalidates the `faqs` cache.
+   */
   async updateFaq(id: string, site_id: string, payload: any, editorId: string) {
     const existing = await this.deps.prisma.faq.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -961,6 +1074,9 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Soft-deactivates an FAQ entry (`isActive = false`) and invalidates the `faqs` cache.
+   */
   async deleteFaq(id: string, site_id: string, editorId: string) {
     const existing = await this.deps.prisma.faq.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -982,7 +1098,9 @@ export class CmsService {
     return updated;
   }
 
-  // Testimonials
+  /**
+   * Lists client testimonials across optional status filters for the CMS dashboard.
+   */
   async getTestimonials(site_id: string, status?: "DRAFT" | "PUBLISHED" | "ARCHIVED") {
     const where: Record<string, unknown> = { site_id };
     if (status && ["DRAFT", "PUBLISHED", "ARCHIVED"].includes(status)) {
@@ -998,6 +1116,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Fetches a single testimonial by `{ id, site_id }`.
+   */
   async getTestimonialById(id: string, site_id: string) {
     return this.deps.prisma.testimonial.findFirst({
       where: { id, site_id },
@@ -1008,6 +1129,10 @@ export class CmsService {
     });
   }
 
+  /**
+   * Creates a client testimonial after verifying that any referenced `portfolioId` belongs
+   * to the same `site_id`, then invalidates the `testimonials` cache.
+   */
   async createTestimonial(site_id: string, payload: any, editorId: string) {
     if (payload.portfolioId) {
       const portfolio = await this.deps.prisma.portfolio.findFirst({
@@ -1046,6 +1171,9 @@ export class CmsService {
     return created;
   }
 
+  /**
+   * Updates a client testimonial and invalidates the `testimonials` cache.
+   */
   async updateTestimonial(id: string, site_id: string, payload: any, editorId: string) {
     const existing = await this.deps.prisma.testimonial.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -1092,6 +1220,9 @@ export class CmsService {
     return updated;
   }
 
+  /**
+   * Archives a client testimonial (`status = 'ARCHIVED'`) and invalidates the `testimonials` cache.
+   */
   async archiveTestimonial(id: string, site_id: string, editorId: string) {
     const existing = await this.deps.prisma.testimonial.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -1114,7 +1245,9 @@ export class CmsService {
     return updated;
   }
 
-  // Content Snapshots (FIFO 5 Versions)
+  /**
+   * Lists the 25 most recent content snapshots for `site_id`, optionally filtered by `entityType` and `entityId`.
+   */
   async getSnapshots(query: {
     site_id: string;
     entityType?: string;
@@ -1135,6 +1268,11 @@ export class CmsService {
     });
   }
 
+  /**
+   * Restores a post, portfolio, service, or static page from a saved `ContentSnapshot`,
+   * falling back to the post's current `categoryId` if the snapshot's category was deleted,
+   * and logs a `CONTENT_STATUS_CHANGED` activity entry.
+   */
   async restoreSnapshot(snapshotId: string, site_id: string, editorId: string) {
     const snapshot = await this.deps.prisma.contentSnapshot.findFirst({
       where: { id: snapshotId, site_id },
@@ -1276,7 +1414,9 @@ export class CmsService {
     };
   }
 
-  // Redirects
+  /**
+   * Lists all custom URL redirect rules configured for `site_id`.
+   */
   async getRedirects(site_id: string) {
     return this.deps.prisma.redirect.findMany({
       where: { site_id },
@@ -1284,6 +1424,10 @@ export class CmsService {
     });
   }
 
+  /**
+   * Registers a new 301/302 redirect rule after verifying that `sourcePath` and `targetPath`
+   * do not form a self-redirect loop.
+   */
   async createRedirect(
     site_id: string,
     payload: { sourcePath: string; targetPath: string; statusCode?: number }
@@ -1305,6 +1449,9 @@ export class CmsService {
     });
   }
 
+  /**
+   * Deletes a custom redirect rule by `{ id, site_id }`.
+   */
   async deleteRedirect(id: string, site_id: string) {
     const existing = await this.deps.prisma.redirect.findFirst({ where: { id, site_id } });
     if (!existing) {
@@ -1314,6 +1461,10 @@ export class CmsService {
     return { message: "Aturan redirect berhasil dihapus." };
   }
 
+  /**
+   * Retains only the 5 newest snapshots per `{ site_id, entityType, entityId }` (FIFO policy),
+   * deleting older versions so the `content_snapshots` table stays bounded.
+   */
   private async pruneSnapshots(site_id: string, entityType: string, entityId: string) {
     try {
       const snapshots = await this.deps.prisma.contentSnapshot.findMany({
