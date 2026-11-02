@@ -170,6 +170,86 @@ export class AnalyticsService {
       }
     }
 
+    // In-memory grouping of daily timeline series
+    const timelineMap = new Map<
+      string,
+      { date: string; visitors: number; pageviews: number; sessions: number; conversions: number }
+    >();
+
+    const cursor = new Date(from);
+    cursor.setHours(0, 0, 0, 0);
+    const endCursor = new Date(to);
+    endCursor.setHours(23, 59, 59, 999);
+
+    while (cursor <= endCursor) {
+      const dateKey = cursor.toISOString().slice(0, 10);
+      timelineMap.set(dateKey, {
+        date: dateKey,
+        visitors: 0,
+        pageviews: 0,
+        sessions: 0,
+        conversions: 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    for (const r of records) {
+      const dateKey = r.date.toISOString().slice(0, 10);
+      const existing = timelineMap.get(dateKey);
+      if (existing) {
+        existing.visitors += r.visitors;
+        existing.pageviews += r.pageviews;
+        existing.sessions += r.sessions;
+        existing.conversions += r.whatsappClicks + r.formSubmits;
+      }
+    }
+
+    const timeline = Array.from(timelineMap.values());
+
+    // Aggregate device distribution
+    const deviceRecords = await this.deps.prisma.analyticsDaily.findMany({
+      where: {
+        site_id,
+        path: "*",
+        device: { not: "all" },
+        date: { gte: from, lte: to },
+      },
+    });
+
+    const deviceMap = new Map<string, { device: string; visitors: number }>();
+    deviceMap.set("mobile", { device: "mobile", visitors: 0 });
+    deviceMap.set("desktop", { device: "desktop", visitors: 0 });
+    deviceMap.set("tablet", { device: "tablet", visitors: 0 });
+
+    let totalDeviceVisitors = 0;
+    for (const dr of deviceRecords) {
+      const dev = dr.device || "mobile";
+      const existing = deviceMap.get(dev) || { device: dev, visitors: 0 };
+      existing.visitors += dr.visitors;
+      deviceMap.set(dev, existing);
+      totalDeviceVisitors += dr.visitors;
+    }
+
+    const deviceLabels: Record<string, string> = {
+      mobile: "Smartphone (Mobile)",
+      desktop: "Komputer (Desktop)",
+      tablet: "Tablet",
+      unknown: "Lainnya",
+    };
+
+    const devices = Array.from(deviceMap.values()).map((d) => {
+      const sharePercentage =
+        totalDeviceVisitors > 0
+          ? parseFloat(((d.visitors / totalDeviceVisitors) * 100).toFixed(1))
+          : 0;
+      return {
+        device: d.device,
+        label: deviceLabels[d.device] || d.device,
+        visitors: d.visitors,
+        sharePercentage,
+      };
+    });
+
     return {
       site_id,
       period: {
@@ -194,6 +274,8 @@ export class AnalyticsService {
         conversionRate,
         conversionRateChange,
       },
+      timeline,
+      devices,
     };
   }
 
@@ -348,6 +430,60 @@ export class AnalyticsService {
         pageviews,
         visitors: r.visitors,
         conversions: r.conversions,
+        sharePercentage,
+      };
+    });
+  }
+
+  /**
+   * Groups daily analytics rollups by client device categories (mobile, desktop, tablet).
+   */
+  async getDevices(rawSiteId?: string, fromDateStr?: string, toDateStr?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const to = toDateStr ? new Date(toDateStr) : new Date();
+    const from = fromDateStr
+      ? new Date(fromDateStr)
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const records = await this.deps.prisma.analyticsDaily.findMany({
+      where: {
+        site_id,
+        path: "*",
+        device: { not: "all" },
+        date: { gte: from, lte: to },
+      },
+    });
+
+    const deviceMap = new Map<string, { device: string; visitors: number }>();
+    deviceMap.set("mobile", { device: "mobile", visitors: 0 });
+    deviceMap.set("desktop", { device: "desktop", visitors: 0 });
+    deviceMap.set("tablet", { device: "tablet", visitors: 0 });
+
+    let totalDeviceVisitors = 0;
+    for (const dr of records) {
+      const dev = dr.device || "mobile";
+      const existing = deviceMap.get(dev) || { device: dev, visitors: 0 };
+      existing.visitors += dr.visitors;
+      deviceMap.set(dev, existing);
+      totalDeviceVisitors += dr.visitors;
+    }
+
+    const deviceLabels: Record<string, string> = {
+      mobile: "Smartphone (Mobile)",
+      desktop: "Komputer (Desktop)",
+      tablet: "Tablet",
+      unknown: "Lainnya",
+    };
+
+    return Array.from(deviceMap.values()).map((d) => {
+      const sharePercentage =
+        totalDeviceVisitors > 0
+          ? parseFloat(((d.visitors / totalDeviceVisitors) * 100).toFixed(1))
+          : 0;
+      return {
+        device: d.device,
+        label: deviceLabels[d.device] || d.device,
+        visitors: d.visitors,
         sharePercentage,
       };
     });

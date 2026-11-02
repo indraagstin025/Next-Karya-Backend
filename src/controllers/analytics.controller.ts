@@ -61,4 +61,20 @@ export class AnalyticsController {
       next(err);
     }
   };
+
+  /**
+   * Returns device category breakdowns (mobile, desktop, tablet).
+   */
+  getDevices = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const from = req.query.from as string | undefined;
+      const to = req.query.to as string | undefined;
+
+      const result = await this.analyticsService.getDevices(site_id, from, to);
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

@@ -14,6 +14,7 @@ export function createAnalyticsRouter(container: AppContainer = appContainer): R
   router.get("/overview", analyticsController.getOverview);
   router.get("/pages", analyticsController.getPages);
   router.get("/sources", analyticsController.getSources);
+  router.get("/devices", analyticsController.getDevices);
 
   return router;
 }
