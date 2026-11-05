@@ -13,6 +13,15 @@ const envSchema = z
     WEBHOOK_SECRET: z.string().min(16, "WEBHOOK_SECRET must be at least 16 characters"),
     FRONTEND_URL: z.string().default("http://localhost:3000"),
     SITE_ID: z.string().default("nextkarya-main"),
+    STAFF_ADMIN_EMAILS: z
+      .string()
+      .default("programmer@nextkarya.web.id")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((email) => email.trim().toLowerCase())
+          .filter((email) => email.length > 0)
+      ),
     UPLOAD_DIR: z.string().default("./uploads"),
     STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),
     SUPABASE_URL: z.string().url("SUPABASE_URL harus berupa alamat lengkap").optional(),

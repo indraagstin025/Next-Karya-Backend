@@ -15,6 +15,15 @@ export interface AuthenticatedUser {
   jobTitle: string;
   role: "STAFF";
   tokenVersion: number;
+  isAdmin: boolean;
+}
+
+/**
+ * Menentukan apakah sebuah email staf masuk daftar admin dari `STAFF_ADMIN_EMAILS`.
+ * Pemeriksaan memakai email yang sudah dinormalisasi agar tidak peka huruf besar/kecil.
+ */
+export function isAdminEmail(email: string, adminEmails: string[]): boolean {
+  return adminEmails.includes(email.trim().toLowerCase());
 }
 
 declare global {
@@ -177,6 +186,7 @@ export function createAuthMiddleware(
         jobTitle: user.jobTitle,
         role: user.role,
         tokenVersion: user.tokenVersion,
+        isAdmin: isAdminEmail(user.email, deps.env.STAFF_ADMIN_EMAILS),
       };
 
       return next();
@@ -195,3 +205,37 @@ export function createAuthMiddleware(
 }
 
 export const requireAuth = createAuthMiddleware();
+
+/**
+ * Membatasi akses ke akun admin yang terdaftar di `STAFF_ADMIN_EMAILS`.
+ * Middleware ini harus dipasang setelah `requireAuth`.
+ */
+export function createAdminMiddleware() {
+  return function requireAdminMiddleware(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    if (!req.user) {
+      return sendError(
+        res,
+        401,
+        "UNAUTHORIZED",
+        "Sesi login tidak ditemukan. Silakan masuk kembali."
+      );
+    }
+
+    if (!req.user.isAdmin) {
+      return sendError(
+        res,
+        403,
+        "ADMIN_ONLY",
+        "Hanya akun admin yang bisa membuka bagian ini."
+      );
+    }
+
+    return next();
+  };
+}
+
+export const requireAdmin = createAdminMiddleware();

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { appContainer, AppContainer } from "../../container";
 import { validateBody, validateParams, idParamSchema } from "../../middlewares/validate";
-import { loginSchema, revokeSessionsSchema } from "../../validators/auth";
+import { loginSchema, revokeSessionsSchema, changePasswordSchema } from "../../validators/auth";
 
 /**
  * Creates the `/auth` router with IP-based brute-force rate limiting on `/login`
@@ -10,7 +10,7 @@ import { loginSchema, revokeSessionsSchema } from "../../validators/auth";
 export function createAuthRouter(container: AppContainer = appContainer): Router {
   const router = Router();
   const { auth: authController } = container.controllers;
-  const { requireAuth, rateLimiter } = container.middlewares;
+  const { requireAuth, requireAdmin, rateLimiter } = container.middlewares;
 
   const loginRateLimiter = rateLimiter({
     windowSec: 900,
@@ -20,6 +20,13 @@ export function createAuthRouter(container: AppContainer = appContainer): Router
 
   router.post("/login", loginRateLimiter, validateBody(loginSchema), authController.login);
   router.get("/me", requireAuth, authController.me);
+  router.post(
+    "/change-password",
+    requireAuth,
+    requireAdmin,
+    validateBody(changePasswordSchema),
+    authController.changeOwnPassword
+  );
   router.get("/users", requireAuth, authController.getStaffUsers);
   router.post(
     "/users/:id/revoke-sessions",

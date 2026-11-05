@@ -59,4 +59,68 @@ export class AuthController {
       next(err);
     }
   };
+
+  /**
+   * Creates a new staff account. Route-level `requireAdmin` already limits access.
+   */
+  createStaffUser = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await this.authService.createStaffUser(req.body);
+      return sendSuccess(res, result, 201);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Updates a staff member's identity or active status.
+   */
+  updateStaffUser = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      const result = await this.authService.updateStaffUser(
+        id,
+        req.body,
+        req.user!.id
+      );
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Resets another staff member's password without asking for their old password.
+   */
+  resetPassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      const { password } = req.body;
+      const result = await this.authService.resetPassword(
+        id,
+        password,
+        req.user!.id
+      );
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Changes the authenticated user's own password after verifying the current one.
+   */
+  changeOwnPassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const result = await this.authService.changeOwnPassword(
+        req.user!.id,
+        currentPassword,
+        newPassword
+      );
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

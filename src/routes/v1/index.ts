@@ -8,7 +8,12 @@ import { createMediaRouter } from "./media.routes";
 import { createAnalyticsRouter } from "./analytics.routes";
 import { createEmergencyRouter } from "./emergency.routes";
 import { validateBody, validateParams, idParamSchema } from "../../middlewares/validate";
-import { revokeSessionsSchema } from "../../validators/auth";
+import {
+  revokeSessionsSchema,
+  createStaffUserSchema,
+  updateStaffUserSchema,
+  resetPasswordSchema,
+} from "../../validators/auth";
 
 /**
  * Assembles the `/api/v1` router, mounting health checks, staff session routes,
@@ -17,7 +22,7 @@ import { revokeSessionsSchema } from "../../validators/auth";
 export function createV1Router(container: AppContainer = appContainer): Router {
   const router = Router();
   const { auth: authController } = container.controllers;
-  const { requireAuth } = container.middlewares;
+  const { requireAuth, requireAdmin } = container.middlewares;
 
   router.get("/health", (_req, res) => {
     res.json({
@@ -34,6 +39,29 @@ export function createV1Router(container: AppContainer = appContainer): Router {
   });
 
   router.get("/users", requireAuth, authController.getStaffUsers);
+  router.post(
+    "/users",
+    requireAuth,
+    requireAdmin,
+    validateBody(createStaffUserSchema),
+    authController.createStaffUser
+  );
+  router.patch(
+    "/users/:id",
+    requireAuth,
+    requireAdmin,
+    validateParams(idParamSchema),
+    validateBody(updateStaffUserSchema),
+    authController.updateStaffUser
+  );
+  router.post(
+    "/users/:id/reset-password",
+    requireAuth,
+    requireAdmin,
+    validateParams(idParamSchema),
+    validateBody(resetPasswordSchema),
+    authController.resetPassword
+  );
   router.post(
     "/users/:id/revoke-sessions",
     requireAuth,

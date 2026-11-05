@@ -21,7 +21,7 @@ import { CrmController } from "../controllers/crm.controller";
 import { EmergencyController } from "../controllers/emergency.controller";
 import { MediaController } from "../controllers/media.controller";
 import { PublicController } from "../controllers/public.controller";
-import { createAuthMiddleware } from "../middlewares/auth";
+import { createAuthMiddleware, createAdminMiddleware } from "../middlewares/auth";
 import { createRateLimiterFactory } from "../middlewares/rateLimiter";
 import { createErrorHandler } from "../middlewares/errorHandler";
 import { createSecurityMiddleware } from "../middlewares/security";
@@ -72,6 +72,7 @@ export interface AppContainer {
 
   middlewares: {
     requireAuth: ReturnType<typeof createAuthMiddleware>;
+    requireAdmin: ReturnType<typeof createAdminMiddleware>;
     rateLimiter: ReturnType<typeof createRateLimiterFactory>;
     security: ReturnType<typeof createSecurityMiddleware>;
     errorHandler: ReturnType<typeof createErrorHandler>;
@@ -118,6 +119,7 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
   const publicController = new PublicController(publicService, tenantGuard);
 
   const requireAuth = createAuthMiddleware({ prisma, cache, env, logger });
+  const requireAdmin = createAdminMiddleware();
   const rateLimiter = createRateLimiterFactory({ cache, env });
   const security = createSecurityMiddleware(logger);
   const errorHandler = createErrorHandler(logger);
@@ -150,6 +152,7 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
     },
     middlewares: {
       requireAuth,
+      requireAdmin,
       rateLimiter,
       security,
       errorHandler,

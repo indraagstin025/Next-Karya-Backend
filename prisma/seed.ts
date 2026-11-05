@@ -68,11 +68,6 @@ async function main() {
     );
   }
 
-  const defaultPassword = await bcrypt.hash(
-    configuredSeedPassword || "NextKarya2026!",
-    10
-  );
-
   const staffMembers = [
     {
       id: "user-programmer-001",
@@ -80,6 +75,7 @@ async function main() {
       fullName: "Staf A (Programmer)",
       jobTitle: "Full-Stack Developer",
       role: UserRole.STAFF,
+      passwordEnv: "SEED_PASSWORD_PROGRAMMER",
     },
     {
       id: "user-designer-002",
@@ -87,6 +83,7 @@ async function main() {
       fullName: "Staf B (Desainer)",
       jobTitle: "UI/UX & Visual Designer",
       role: UserRole.STAFF,
+      passwordEnv: "SEED_PASSWORD_DESIGNER",
     },
     {
       id: "user-lead-003",
@@ -94,10 +91,22 @@ async function main() {
       fullName: "Staf C (Project Lead)",
       jobTitle: "Project Lead & Client Relations",
       role: UserRole.STAFF,
+      passwordEnv: "SEED_PASSWORD_LEAD",
     },
   ];
 
   for (const staff of staffMembers) {
+    const accountPassword =
+      process.env[staff.passwordEnv]?.trim() ||
+      configuredSeedPassword ||
+      "NextKarya2026!";
+
+    if (accountPassword.length < 8) {
+      throw new Error(`${staff.passwordEnv} minimal 8 karakter.`);
+    }
+
+    const passwordHash = await bcrypt.hash(accountPassword, 12);
+
     const user = await prisma.user.upsert({
       where: { email: staff.email },
       update: {
@@ -112,7 +121,7 @@ async function main() {
         fullName: staff.fullName,
         jobTitle: staff.jobTitle,
         role: staff.role,
-        passwordHash: defaultPassword,
+        passwordHash,
         isActive: true,
         tokenVersion: 1,
       },

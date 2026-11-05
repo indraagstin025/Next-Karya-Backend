@@ -8,7 +8,7 @@ import { cache as defaultCache } from "../config/redis";
 import { ICacheService } from "../container/types";
 import { AppError } from "../core/AppError";
 import { defaultLogger, ILogger } from "../core/logger";
-import { JWT_ISSUER, JWT_AUDIENCE } from "../middlewares/auth";
+import { JWT_ISSUER, JWT_AUDIENCE, isAdminEmail } from "../middlewares/auth";
 
 // Precomputed valid bcrypt hash (cost=10) used when user is not found to prevent timing-attack enumeration
 const DUMMY_BCRYPT_HASH =
@@ -17,6 +17,32 @@ const DUMMY_BCRYPT_HASH =
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_WINDOW_SEC = 900;
 const STAFF_SESSION_SECONDS = 7 * 24 * 60 * 60;
+const PASSWORD_HASH_COST = 12;
+
+export interface CreateStaffUserInput {
+  email: string;
+  password: string;
+  fullName: string;
+  jobTitle: string;
+}
+
+export interface UpdateStaffUserInput {
+  fullName?: string;
+  jobTitle?: string;
+  isActive?: boolean;
+}
+
+const STAFF_USER_SELECT = {
+  id: true,
+  email: true,
+  fullName: true,
+  jobTitle: true,
+  role: true,
+  avatarUrl: true,
+  isActive: true,
+  tokenVersion: true,
+  updatedAt: true,
+} as const;
 
 export interface AuthServiceDeps {
   prisma: PrismaClient;
@@ -130,6 +156,7 @@ export class AuthService {
         jobTitle: user.jobTitle,
         role: user.role,
         tokenVersion: user.tokenVersion,
+        isAdmin: isAdminEmail(user.email, this.deps.env.STAFF_ADMIN_EMAILS),
       },
     };
   }
@@ -139,20 +166,241 @@ export class AuthService {
    * so sensitive credentials are never serialized to the client.
    */
   async getStaffUsers() {
-    return this.deps.prisma.user.findMany({
+    const users = await this.deps.prisma.user.findMany({
       orderBy: { fullName: "asc" },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        jobTitle: true,
-        role: true,
-        avatarUrl: true,
-        isActive: true,
-        tokenVersion: true,
-        updatedAt: true,
-      },
+      select: STAFF_USER_SELECT,
     });
+
+    return users.map((user) => ({
+      ...user,
+      isAdmin: isAdminEmail(user.email, this.deps.env.STAFF_ADMIN_EMAILS),
+    }));
+  }
+
+  /**
+   * Membuat akun staf baru. Hanya dipanggil dari route yang sudah dilindungi admin.
+   * Kata sandi di-hash dengan bcrypt cost 12 dan tidak pernah dikembalikan ke klien.
+   */
+  async createStaffUser(input: CreateStaffUserInput) {
+    const normalizedEmail = input.email.trim().toLowerCase();
+
+    const existing = await this.deps.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw AppError.conflict(
+        "EMAIL_ALREADY_REGISTERED",
+        "Email ini sudah dipakai akun lain. Gunakan email yang berbeda."
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(input.password, PASSWORD_HASH_COST);
+
+    const user = await this.deps.prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        fullName: input.fullName.trim(),
+        jobTitle: input.jobTitle.trim(),
+        passwordHash,
+        role: "STAFF",
+        isActive: true,
+        tokenVersion: 1,
+      },
+      select: STAFF_USER_SELECT,
+    });
+
+    this.deps.logger.security("STAFF_ACCOUNT_CREATED", {
+      userId: user.id,
+      email: user.email,
+    });
+
+    return {
+      ...user,
+      isAdmin: isAdminEmail(user.email, this.deps.env.STAFF_ADMIN_EMAILS),
+      message: `Akun ${user.fullName} berhasil dibuat. Sampaikan kata sandi awalnya secara langsung kepada yang bersangkutan.`,
+    };
+  }
+
+  /**
+   * Memperbarui identitas dan status aktif akun staf. Admin tidak bisa menonaktifkan
+   * akunnya sendiri agar akses pengelolaan kata sandi tidak terkunci.
+   */
+  async updateStaffUser(
+    targetUserId: string,
+    input: UpdateStaffUserInput,
+    actorId: string
+  ) {
+    const existing = await this.deps.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, fullName: true, isActive: true },
+    });
+
+    if (!existing) {
+      throw AppError.notFound("Akun tidak ditemukan.", "USER_NOT_FOUND");
+    }
+
+    if (input.isActive === false && targetUserId === actorId) {
+      throw AppError.badRequest(
+        "CANNOT_DISABLE_SELF",
+        "Anda tidak bisa menonaktifkan akun yang sedang Anda pakai."
+      );
+    }
+
+    // Menonaktifkan akun juga mencabut sesi yang masih berjalan. Tanpa ini,
+    // sesi lama akan aktif kembali begitu akun diaktifkan lagi.
+    const isBeingDeactivated = input.isActive === false && existing.isActive;
+
+    const user = await this.deps.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        ...(input.fullName !== undefined ? { fullName: input.fullName.trim() } : {}),
+        ...(input.jobTitle !== undefined ? { jobTitle: input.jobTitle.trim() } : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        ...(isBeingDeactivated ? { tokenVersion: { increment: 1 } } : {}),
+      },
+      select: STAFF_USER_SELECT,
+    });
+
+    if (isBeingDeactivated) {
+      await this.deps.cache.set(
+        `auth:token_ver:${targetUserId}`,
+        user.tokenVersion.toString(),
+        86400
+      );
+    }
+
+    this.deps.logger.security("STAFF_ACCOUNT_UPDATED", {
+      targetUserId,
+      executedById: actorId,
+      isActive: user.isActive,
+      sessionsRevoked: isBeingDeactivated,
+    });
+
+    return {
+      ...user,
+      isAdmin: isAdminEmail(user.email, this.deps.env.STAFF_ADMIN_EMAILS),
+      message: `Data akun ${user.fullName} berhasil diperbarui.`,
+    };
+  }
+
+  /**
+   * Mengatur ulang kata sandi staf lain tanpa meminta kata sandi lama.
+   * `tokenVersion` dinaikkan agar semua sesi lama langsung ditolak.
+   */
+  async resetPassword(
+    targetUserId: string,
+    newPassword: string,
+    actorId: string
+  ) {
+    if (targetUserId === actorId) {
+      throw AppError.badRequest(
+        "USE_CHANGE_PASSWORD",
+        "Untuk akun sendiri, ganti kata sandi lewat menu Profil Saya agar kata sandi saat ini ikut diverifikasi."
+      );
+    }
+
+    const existing = await this.deps.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, email: true, fullName: true },
+    });
+
+    if (!existing) {
+      throw AppError.notFound("Akun tidak ditemukan.", "USER_NOT_FOUND");
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, PASSWORD_HASH_COST);
+
+    const updatedUser = await this.deps.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        passwordHash,
+        tokenVersion: { increment: 1 },
+      },
+      select: { id: true, tokenVersion: true },
+    });
+
+    await this.deps.cache.set(
+      `auth:token_ver:${targetUserId}`,
+      updatedUser.tokenVersion.toString(),
+      86400
+    );
+
+    this.deps.logger.security("STAFF_PASSWORD_RESET", {
+      targetUserId,
+      executedById: actorId,
+      newTokenVersion: updatedUser.tokenVersion,
+    });
+
+    return {
+      message: `Kata sandi ${existing.fullName} berhasil diatur ulang. Semua sesi lamanya sudah dikeluarkan.`,
+      newTokenVersion: updatedUser.tokenVersion,
+    };
+  }
+
+  /**
+   * Mengubah kata sandi akun sendiri dengan verifikasi kata sandi saat ini.
+   * Sesi aktif ikut berakhir karena `tokenVersion` naik, sehingga pengguna
+   * harus masuk kembali memakai kata sandi baru.
+   */
+  async changeOwnPassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ) {
+    const user = await this.deps.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true, fullName: true },
+    });
+
+    if (!user) {
+      throw AppError.notFound("Akun tidak ditemukan.", "USER_NOT_FOUND");
+    }
+
+    const isCurrentMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isCurrentMatch) {
+      throw AppError.badRequest(
+        "CURRENT_PASSWORD_MISMATCH",
+        "Kata sandi saat ini tidak sesuai. Periksa kembali lalu coba lagi."
+      );
+    }
+
+    const isSamePassword = await bcrypt.compare(newPassword, user.passwordHash);
+    if (isSamePassword) {
+      throw AppError.badRequest(
+        "PASSWORD_UNCHANGED",
+        "Kata sandi baru harus berbeda dari kata sandi saat ini."
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, PASSWORD_HASH_COST);
+
+    const updatedUser = await this.deps.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash,
+        tokenVersion: { increment: 1 },
+      },
+      select: { id: true, tokenVersion: true },
+    });
+
+    await this.deps.cache.set(
+      `auth:token_ver:${userId}`,
+      updatedUser.tokenVersion.toString(),
+      86400
+    );
+
+    this.deps.logger.security("STAFF_PASSWORD_CHANGED", {
+      userId,
+      newTokenVersion: updatedUser.tokenVersion,
+    });
+
+    return {
+      message:
+        "Kata sandi berhasil diubah. Silakan masuk kembali memakai kata sandi baru.",
+      newTokenVersion: updatedUser.tokenVersion,
+    };
   }
 
   /**
