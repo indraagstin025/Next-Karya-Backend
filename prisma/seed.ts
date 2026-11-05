@@ -1,7 +1,29 @@
+import "dotenv/config";
 import { PrismaClient, UserRole, ContentStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
+
+async function notifyFrontendRevalidation() {
+  const frontendUrl = process.env.FRONTEND_URL;
+  const secret = process.env.WEBHOOK_SECRET;
+  if (!frontendUrl || !secret) return;
+
+  try {
+    await fetch(`${frontendUrl.replace(/\/+$/, "")}/api/revalidate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-webhook-secret": secret,
+      },
+      body: JSON.stringify({ tag: "all", action: "update" }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    // The frontend may not be running during seeding; the next build or ISR
+    // revalidation will pick up the seeded content.
+  }
+}
 
 async function main() {
   console.log("Seeding canonical database for Next Karya Digital Solutions...");
@@ -28,7 +50,28 @@ async function main() {
   console.log("Site master seeded:", site.id);
 
   // 2. Three Internal Staff Accounts
-  const defaultPassword = await bcrypt.hash("NextKarya2026!", 10);
+  const configuredSeedPassword = process.env.SEED_DEFAULT_PASSWORD?.trim();
+
+  if (process.env.NODE_ENV === "production" && !configuredSeedPassword) {
+    throw new Error(
+      "SEED_DEFAULT_PASSWORD wajib diisi saat menjalankan seed di production."
+    );
+  }
+
+  if (configuredSeedPassword && configuredSeedPassword.length < 8) {
+    throw new Error("SEED_DEFAULT_PASSWORD minimal 8 karakter.");
+  }
+
+  if (!configuredSeedPassword) {
+    console.warn(
+      "PERINGATAN: seed memakai kata sandi default. Isi SEED_DEFAULT_PASSWORD dan ganti kata sandi staf sebelum produksi."
+    );
+  }
+
+  const defaultPassword = await bcrypt.hash(
+    configuredSeedPassword || "NextKarya2026!",
+    10
+  );
 
   const staffMembers = [
     {
@@ -750,6 +793,8 @@ async function main() {
     });
   }
   console.log("Testimonials seeded successfully.");
+
+  await notifyFrontendRevalidation();
 
   console.log("Canonical database seeding completed 100%!");
 }

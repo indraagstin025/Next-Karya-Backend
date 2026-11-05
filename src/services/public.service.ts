@@ -200,7 +200,17 @@ export class PublicService {
 
     if (!post) return null;
 
-    let relatedPosts: { id: string; title: string; slug: string }[] = [];
+    let relatedPosts: {
+      id: string;
+      title: string;
+      slug: string;
+      excerpt: string;
+      coverUrl: string | null;
+      coverAlt: string | null;
+      readingTimeMinutes: number;
+      publishedAt: Date | null;
+      category: { name: string; slug: string } | null;
+    }[] = [];
     if (post.relatedPostIds && post.relatedPostIds.length > 0) {
       relatedPosts = await this.deps.prisma.post.findMany({
         where: {
@@ -208,7 +218,17 @@ export class PublicService {
           id: { in: post.relatedPostIds },
           status: "PUBLISHED",
         },
-        select: { id: true, title: true, slug: true },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          excerpt: true,
+          coverUrl: true,
+          coverAlt: true,
+          readingTimeMinutes: true,
+          publishedAt: true,
+          category: { select: { name: true, slug: true } },
+        },
       });
     }
 

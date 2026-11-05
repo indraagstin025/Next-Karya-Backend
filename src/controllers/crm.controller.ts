@@ -168,4 +168,20 @@ export class CrmController {
       next(err);
     }
   };
+
+  /**
+   * Deletes a schedule within the caller's authorized tenant.
+   */
+  deleteSchedule = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(
+        req.body?.site_id ?? req.query.site_id
+      );
+      const result = await this.crmService.deleteSchedule(id, req.user!.id, site_id);
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

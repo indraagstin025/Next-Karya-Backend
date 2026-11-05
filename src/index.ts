@@ -18,6 +18,10 @@ export function createApp(container: AppContainer = appContainer): Express {
   const { security, rateLimiter, errorHandler } = container.middlewares;
 
   app.disable("x-powered-by");
+  // Dua hop di produksi: Cloudflare -> Caddy -> aplikasi. Dipakai agar req.ip
+  // membaca IP pengunjung dari X-Forwarded-For untuk audit log, bukan alamat
+  // container Caddy atau edge Cloudflare.
+  app.set("trust proxy", 2);
 
   app.use(
     helmet({

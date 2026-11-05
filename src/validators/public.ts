@@ -1,29 +1,30 @@
 import { z } from "zod";
+import "./locale";
 
 const siteIdField = z
   .string()
   .trim()
   .min(3)
   .max(64)
-  .regex(/^[a-z0-9-]+$/, "Format site_id tidak valid")
+  .regex(/^[a-z0-9-]+$/, "Kode situs tidak valid")
   .default("nextkarya-main");
 
 export const createLeadPublicSchema = z
   .object({
     site_id: siteIdField,
-    clientName: z.string().trim().min(2, "Nama minimal 2 karakter").max(255),
-    companyName: z.string().trim().max(255).optional().nullable(),
+    clientName: z.string().trim().min(2, "Nama minimal 2 karakter").max(255, "Nama maksimal 255 karakter"),
+    companyName: z.string().trim().max(255, "Nama perusahaan maksimal 255 karakter").optional().nullable(),
     whatsappNumber: z
       .string()
-      .regex(/^(\+62|62|0)8[1-9][0-9]{6,11}$/, "Format nomor WhatsApp tidak valid"),
-    email: z.string().email("Format email tidak valid").optional().nullable(),
-    serviceRequested: z.string().trim().min(1, "Pilih salah satu layanan").max(255),
+      .regex(/^(\+62|62|0)8[1-9][0-9]{6,11}$/, "Nomor WhatsApp belum benar. Contoh: 081234567890"),
+    email: z.string().email("Alamat email belum benar. Contoh: nama@email.com").optional().nullable(),
+    serviceRequested: z.string().trim().min(1, "Pilih salah satu layanan").max(255, "Layanan maksimal 255 karakter"),
     message: z
       .string()
       .trim()
       .min(5, "Pesan minimal 5 karakter")
       .max(2000, "Pesan maksimal 2.000 karakter"),
-    website_url: z.string().max(100, "Honeypot trap").optional().or(z.literal("")),
+    website_url: z.string().max(100, "Kolom ini tidak boleh diisi").optional().or(z.literal("")),
   })
   .strict();
 
@@ -35,14 +36,14 @@ export const analyticsEventSchema = z
       .trim()
       .min(10)
       .max(64)
-      .regex(/^[a-zA-Z0-9_-]+$/, "Format sessionId tidak valid"),
+      .regex(/^[a-zA-Z0-9_-]+$/, "Data kunjungan tidak valid"),
     eventName: z.enum(["pageview", "whatsapp_click", "form_submit", "heartbeat"]),
     path: z
       .string()
       .trim()
-      .min(1)
-      .max(255)
-      .refine((p) => p.startsWith("/") && !p.includes(".."), "Format path tidak valid"),
+      .min(1, "Alamat halaman wajib diisi")
+      .max(255, "Alamat halaman maksimal 255 karakter")
+      .refine((p) => p.startsWith("/") && !p.includes(".."), "Alamat halaman tidak valid"),
     referrer: z.string().trim().max(500).optional().nullable(),
     source: z.string().trim().max(50).default("direct"),
     device: z.enum(["mobile", "desktop", "tablet", "unknown"]).default("unknown"),
@@ -59,7 +60,7 @@ export const analyticsEventSchema = z
       return true;
     },
     {
-      message: "durationSec hanya boleh bernilai > 0 pada event heartbeat",
+      message: "Durasi kunjungan hanya boleh diisi untuk pembaruan kunjungan",
       path: ["durationSec"],
     }
   );

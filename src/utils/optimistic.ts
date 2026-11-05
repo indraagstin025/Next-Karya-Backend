@@ -20,7 +20,7 @@ export function checkOptimisticLock(
       res,
       400,
       "MISSING_UPDATED_AT",
-      "Field updatedAt wajib disertakan untuk validasi konkurensi (optimistic locking)."
+      "Muat ulang halaman, lalu coba simpan lagi."
     );
     return false;
   }
@@ -33,7 +33,7 @@ export function checkOptimisticLock(
       res,
       400,
       "INVALID_UPDATED_AT",
-      "Format stempel waktu updatedAt tidak valid (wajib ISO 8601)."
+      "Waktu perubahan data tidak terbaca. Muat ulang halaman lalu coba lagi."
     );
     return false;
   }
@@ -43,7 +43,7 @@ export function checkOptimisticLock(
       res,
       409,
       "CONCURRENT_MODIFICATION_CONFLICT",
-      "Data ini baru saja diperbarui oleh rekan kerja Anda. Silakan tinjau perubahan terkini.",
+      "Data ini baru saja diubah oleh rekan kerja Anda. Muat ulang halaman untuk melihat versi terbaru.",
       undefined,
       currentEntityData
     );
@@ -70,16 +70,16 @@ export class TenantGuard implements ITenantGuard {
     }
     const candidate = Array.isArray(rawSiteId) ? rawSiteId[rawSiteId.length - 1] : rawSiteId;
     if (typeof candidate !== "string") {
-      throw AppError.badRequest("INVALID_SITE_ID", "Parameter site_id tidak valid.");
+      throw AppError.badRequest("INVALID_SITE_ID", "Kode situs tidak valid.");
     }
     const normalized = candidate.trim();
     if (!/^[a-z0-9-]{3,64}$/.test(normalized)) {
-      throw AppError.badRequest("INVALID_SITE_ID", "Format site_id tidak valid.");
+      throw AppError.badRequest("INVALID_SITE_ID", "Kode situs tidak valid.");
     }
     if (normalized !== this.allowedSiteId) {
       throw AppError.forbidden(
         "TENANT_ACCESS_DENIED",
-        "Akses lintas site_id ditolak pada lingkup Fase 1."
+        "Anda tidak punya akses ke situs ini."
       );
     }
     return normalized;

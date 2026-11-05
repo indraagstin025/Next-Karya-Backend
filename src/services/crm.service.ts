@@ -425,12 +425,60 @@ export class CrmService {
       dataToUpdate.endDate = new Date(payload.endDate);
     }
 
-    return this.deps.prisma.projectSchedule.update({
+    const updated = await this.deps.prisma.projectSchedule.update({
       where: { id: current.id },
       data: dataToUpdate,
       include: {
         assignedTo: { select: { id: true, fullName: true } },
       },
     });
+
+    await this.deps.prisma.activityLog.create({
+      data: {
+        site_id,
+        actorId: editorId,
+        action: "SCHEDULE_SHIFTED",
+        entityType: "PROJECT_SCHEDULE",
+        entityId: current.id,
+        summary: `Jadwal "${updated.taskName}" diperbarui.`,
+        metadata: {
+          previousStatus: current.status,
+          nextStatus: updated.status,
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Deletes a project schedule within the authorized tenant and records the action.
+   */
+  async deleteSchedule(id: string, editorId: string, rawSiteId?: string) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const current = await this.deps.prisma.projectSchedule.findFirst({
+      where: { id, site_id },
+    });
+    if (!current) {
+      throw AppError.notFound("Jadwal tidak ditemukan.");
+    }
+
+    await this.deps.prisma.projectSchedule.delete({
+      where: { id: current.id },
+    });
+
+    await this.deps.prisma.activityLog.create({
+      data: {
+        site_id,
+        actorId: editorId,
+        action: "SCHEDULE_SHIFTED",
+        entityType: "PROJECT_SCHEDULE",
+        entityId: current.id,
+        summary: `Jadwal "${current.taskName}" dihapus.`,
+        metadata: { deleted: true },
+      },
+    });
+
+    return { id: current.id };
   }
 }

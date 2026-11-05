@@ -57,7 +57,7 @@ export function createRateLimiterFactory(
             res,
             429,
             "RATE_LIMIT_EXCEEDED",
-            `Batas frekuensi permintaan terlampaui (maksimal ${maxRequests} permintaan per ${windowSec} detik). Silakan coba lagi nanti.`
+            `Terlalu banyak permintaan. Coba lagi dalam ${windowSec} detik.`
           );
         }
 

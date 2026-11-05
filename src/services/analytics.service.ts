@@ -8,6 +8,12 @@ export interface AnalyticsServiceDeps {
   tenantGuard: ITenantGuard;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfUtcDay(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
 /**
  * Aggregates pre-rolled-up daily traffic metrics (`analytics_daily`) for the internal CMS dashboard.
  */
@@ -34,6 +40,8 @@ export class AnalyticsService {
       where: {
         site_id,
         path: "*",
+        source: "all",
+        device: "all",
         date: {
           gte: from,
           lte: to,
@@ -64,11 +72,11 @@ export class AnalyticsService {
       totalSessions > 0 ? Math.round(totalDurationSec / totalSessions) : 0;
     const bounceRate =
       totalSessions > 0
-        ? parseFloat(((totalBounces / totalSessions) * 100).toFixed(2))
+        ? parseFloat(((totalBounces / totalSessions) * 100).toFixed(1))
         : 0;
     const conversionRate =
       totalVisitors > 0
-        ? parseFloat(((totalConversions / totalVisitors) * 100).toFixed(2))
+        ? parseFloat(((totalConversions / totalVisitors) * 100).toFixed(1))
         : 0;
 
     let visitorsChange = 0;
@@ -80,14 +88,21 @@ export class AnalyticsService {
     let conversionRateChange = 0;
 
     if (records.length > 0) {
-      const windowMs = to.getTime() - from.getTime();
-      const prevTo = new Date(from.getTime());
-      const prevFrom = new Date(prevTo.getTime() - windowMs);
+      const fromDayStart = startOfUtcDay(from);
+      const toDayStart = startOfUtcDay(to);
+      const rangeDays = Math.max(
+        1,
+        Math.round((toDayStart - fromDayStart) / DAY_MS) + 1
+      );
+      const prevTo = new Date(fromDayStart - DAY_MS);
+      const prevFrom = new Date(fromDayStart - rangeDays * DAY_MS);
 
       const prevRecords = await this.deps.prisma.analyticsDaily.findMany({
         where: {
           site_id,
           path: "*",
+          source: "all",
+          device: "all",
           date: {
             gte: prevFrom,
             lte: prevTo,
@@ -211,6 +226,7 @@ export class AnalyticsService {
       where: {
         site_id,
         path: "*",
+        source: "all",
         device: { not: "all" },
         date: { gte: from, lte: to },
       },
@@ -300,6 +316,8 @@ export class AnalyticsService {
       where: {
         site_id,
         path: { not: "*" },
+        source: "all",
+        device: "all",
         date: { gte: from, lte: to },
       },
     });
@@ -342,11 +360,11 @@ export class AnalyticsService {
       const visitors = r.visitors;
       const bounceRate =
         r.sessions > 0
-          ? parseFloat(((r.bounces / r.sessions) * 100).toFixed(2))
+          ? parseFloat(((r.bounces / r.sessions) * 100).toFixed(1))
           : 0;
       const conversionRate =
         visitors > 0
-          ? parseFloat(((r.conversions / visitors) * 100).toFixed(2))
+          ? parseFloat(((r.conversions / visitors) * 100).toFixed(1))
           : 0;
 
       return {
@@ -374,8 +392,9 @@ export class AnalyticsService {
     const records = await this.deps.prisma.analyticsDaily.findMany({
       where: {
         site_id,
-        path: { not: "*" },
+        path: "*",
         source: { not: "all" },
+        device: "all",
         date: { gte: from, lte: to },
       },
     });
@@ -449,6 +468,7 @@ export class AnalyticsService {
       where: {
         site_id,
         path: "*",
+        source: "all",
         device: { not: "all" },
         date: { gte: from, lte: to },
       },

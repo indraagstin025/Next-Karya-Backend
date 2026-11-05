@@ -37,7 +37,12 @@ WEBHOOK_SECRET="kunci-rahasia-webhook-revalidasi"
 FRONTEND_URL="http://localhost:3000"
 SITE_ID="nextkarya-main"
 UPLOAD_DIR="./uploads"
+STORAGE_DRIVER="local"
 ```
+
+> `JWT_SECRET` dan `WEBHOOK_SECRET` harus sama persis dengan nilai di `frontend/.env.local`.
+> Untuk direct upload ke Supabase Storage, gunakan `.env.supabase.example` dan
+> ikuti `docs/supabase-setup.md`.
 
 3. Generate Prisma Client:
 ```bash
@@ -48,6 +53,10 @@ npm run db:generate
 ```bash
 npm run db:seed
 ```
+
+> Untuk produksi, isi `SEED_DEFAULT_PASSWORD` (minimal 8 karakter) sebelum seed.
+> Seed tidak mengubah kata sandi akun yang sudah ada. Ganti kata sandi staf
+> setelah login pertama, dan jangan pakai kata sandi contoh di produksi.
 
 ## 3. Menjalankan Server
 
@@ -66,12 +75,28 @@ npm run build
 npm start
 ```
 
+### Backfill Analitik
+
+Rollup `analytics_daily` dijalankan otomatis setiap jam. Setelah deploy pertama atau setelah perbaikan rollup, isi ulang data historis:
+
+```bash
+npm run analytics:backfill -- 90
+```
+
+Argumen opsional adalah jumlah hari ke belakang (1–90).
+
+### Test
+
+```bash
+npm test
+```
+
 ## 4. Struktur Rute REST API (/api/v1)
 - `GET /api/v1/health`: Cek status kesehatan server
 - Publik: `/articles`, `/portfolios`, `/services`, `/faqs`, `/testimonials`, `/pages`, `/leads`, `/analytics/event`
 - Autentikasi: `POST /api/v1/auth/login`, `POST /api/v1/users/:id/revoke-sessions`
 - CMS: `/posts`, `/portfolios`, `/services`, `/pages`, `/faqs`, `/testimonials`, `/content-snapshots/:id/restore`
 - CRM: `/crm/leads`, `/crm/follow-up-today`, `/crm/schedules`
-- Media: `GET /api/v1/media`, `POST /api/v1/media` (multipart upload)
-- Analitik: `/analytics/overview`, `/analytics/pages`, `/analytics/sources`
+- Media: `GET /api/v1/media`, `POST /api/v1/media/upload-url`, `POST /api/v1/media/confirm`, `PATCH /api/v1/media/:id`, `DELETE /api/v1/media/:id`. `POST /api/v1/media` tetap tersedia sebagai fallback multipart saat `STORAGE_DRIVER=local`.
+- Analitik: `/analytics/overview`, `/analytics/pages`, `/analytics/sources`, `/analytics/devices`
 - Tanggap Darurat: `/emergency/unpublish`, `/emergency/lock-form`, `/emergency/unlock-form`, `/emergency/banner`, `/emergency/leads/:id/reassign`

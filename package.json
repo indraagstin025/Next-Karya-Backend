@@ -10,10 +10,17 @@
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "db:backup": "tsx scripts/backup-db.ts",
+    "db:backup:verify": "tsx scripts/restore-db.ts --latest --verify",
+    "db:restore": "tsx scripts/restore-db.ts",
+    "analytics:backfill": "tsx scripts/backfill-analytics.ts",
+    "storage:check": "tsx scripts/check-supabase-storage.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "@supabase/supabase-js": "^2.119.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -35,7 +42,8 @@
     "@types/node-cron": "^3.0.11",
     "prisma": "^6.19.3",
     "tsx": "^4.23.15",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.5"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

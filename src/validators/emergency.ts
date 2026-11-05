@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "./locale";
 
 export const unpublishContentSchema = z
   .object({
@@ -9,22 +10,22 @@ export const unpublishContentSchema = z
       .trim()
       .min(1)
       .max(64)
-      .regex(/^[a-zA-Z0-9_-]+$/, "Format ID entitas tidak valid"),
-    reason: z.string().trim().min(5, "Alasan tindakan darurat minimal 5 karakter").max(500),
+      .regex(/^[a-zA-Z0-9_-]+$/, "Data yang dipilih tidak dikenal"),
+    reason: z.string().trim().min(5, "Alasan minimal 5 karakter").max(500, "Alasan maksimal 500 karakter"),
   })
   .strict();
 
 export const lockFormSchema = z
   .object({
     site_id: z.string().trim().min(1).max(64).default("nextkarya-main"),
-    reason: z.string().trim().min(5, "Alasan tindakan darurat minimal 5 karakter").max(500),
+    reason: z.string().trim().min(5, "Alasan minimal 5 karakter").max(500, "Alasan maksimal 500 karakter"),
   })
   .strict();
 
 export const unlockFormSchema = z
   .object({
     site_id: z.string().trim().min(1).max(64).default("nextkarya-main"),
-    reason: z.string().trim().min(5, "Alasan tindakan darurat minimal 5 karakter").max(500),
+    reason: z.string().trim().min(5, "Alasan minimal 5 karakter").max(500, "Alasan maksimal 500 karakter"),
   })
   .strict();
 
@@ -32,12 +33,12 @@ export const alertBannerSchema = z
   .object({
     site_id: z.string().trim().min(1).max(64).default("nextkarya-main"),
     isActive: z.boolean(),
-    alertBanner: z.string().trim().max(300, "Teks banner maksimal 300 karakter").optional().nullable(),
-    reason: z.string().trim().min(5, "Alasan tindakan darurat minimal 5 karakter").max(500),
+    alertBanner: z.string().trim().max(300, "Teks pengumuman maksimal 300 karakter").optional().nullable(),
+    reason: z.string().trim().min(5, "Alasan minimal 5 karakter").max(500, "Alasan maksimal 500 karakter"),
   })
   .strict()
   .refine((data) => !data.isActive || Boolean(data.alertBanner && data.alertBanner.trim().length >= 5), {
-    message: "Teks pengumuman banner wajib diisi minimal 5 karakter saat banner diaktifkan.",
+    message: "Isi teks pengumuman minimal 5 karakter saat pengumuman diaktifkan",
     path: ["alertBanner"],
   });
 
@@ -47,9 +48,9 @@ export const reassignLeadEmergencySchema = z
     newAssignedToId: z
       .string()
       .trim()
-      .min(1, "ID staf pengganti wajib ditentukan")
+      .min(1, "Pilih staf pengganti")
       .max(64)
-      .regex(/^[a-zA-Z0-9_-]+$/),
-    reason: z.string().trim().min(5, "Alasan tindakan darurat minimal 5 karakter").max(500),
+      .regex(/^[a-zA-Z0-9_-]+$/, "Data staf yang dipilih tidak dikenal"),
+    reason: z.string().trim().min(5, "Alasan minimal 5 karakter").max(500, "Alasan maksimal 500 karakter"),
   })
   .strict();

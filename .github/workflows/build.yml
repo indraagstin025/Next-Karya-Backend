@@ -1,0 +1,66 @@
+name: Build backend images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: test-jwt-secret-0000000000000000000000000000
+      WEBHOOK_SECRET: test-webhook-secret-000000000000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run build
+      - run: npm test
+
+  images:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: runtime
+            suffix: ""
+          - target: tools
+            suffix: "-tools"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Nama image sengaja ditulis lengkap dan huruf kecil. Jika repo dipindah
+      # ke owner lain, ubah di sini dan di docker-compose.prod.yml.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            ghcr.io/indraagstin025/next-karya-backend${{ matrix.suffix }}:latest
+            ghcr.io/indraagstin025/next-karya-backend${{ matrix.suffix }}:sha-${{ github.sha }}
+          cache-from: type=gha,scope=backend-${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=backend-${{ matrix.target }}

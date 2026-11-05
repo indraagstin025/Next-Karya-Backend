@@ -66,13 +66,13 @@ export function createAuthMiddleware(
         res,
         401,
         "UNAUTHORIZED",
-        "Kredensial otentikasi tidak ditemukan. Header Authorization: Bearer <token> wajib disertakan."
+        "Sesi login tidak ditemukan. Silakan masuk kembali."
       );
     }
 
     const token = authHeader.substring(7).trim();
     if (!token || token.length > 2048) {
-      return sendError(res, 401, "INVALID_TOKEN", "Token otentikasi tidak sah.");
+      return sendError(res, 401, "INVALID_TOKEN", "Sesi login tidak valid. Silakan masuk kembali.");
     }
 
     try {
@@ -92,15 +92,15 @@ export function createAuthMiddleware(
         typeof decoded.userId !== "string" ||
         typeof decoded.tokenVersion !== "number"
       ) {
-        return sendError(res, 401, "INVALID_TOKEN", "Token otentikasi tidak sah.");
+        return sendError(res, 401, "INVALID_TOKEN", "Sesi login tidak valid. Silakan masuk kembali.");
       }
 
       if (decoded.iss && decoded.iss !== JWT_ISSUER) {
-        return sendError(res, 401, "INVALID_TOKEN", "Penerbit token otentikasi tidak dikenal.");
+        return sendError(res, 401, "INVALID_TOKEN", "Sesi login tidak dikenali. Silakan masuk kembali.");
       }
 
       if (decoded.aud && decoded.aud !== JWT_AUDIENCE) {
-        return sendError(res, 401, "INVALID_TOKEN", "Audiens token otentikasi tidak sesuai.");
+        return sendError(res, 401, "INVALID_TOKEN", "Sesi login tidak sesuai. Silakan masuk kembali.");
       }
 
       const cacheKey = `auth:token_ver:${decoded.userId}`;
@@ -120,7 +120,7 @@ export function createAuthMiddleware(
       });
 
       if (!user) {
-        return sendError(res, 401, "USER_NOT_FOUND", "Pengguna tidak ditemukan dalam sistem.");
+        return sendError(res, 401, "USER_NOT_FOUND", "Akun tidak ditemukan. Silakan masuk kembali.");
       }
 
       if (!user.isActive) {
@@ -133,7 +133,7 @@ export function createAuthMiddleware(
           res,
           403,
           "ACCOUNT_DISABLED",
-          "Akun staf ini sedang dinonaktifkan."
+          "Akun ini sedang dinonaktifkan. Hubungi admin."
         );
       }
 
@@ -142,7 +142,7 @@ export function createAuthMiddleware(
           res,
           403,
           "FORBIDDEN",
-          "Peran pengguna tidak memiliki hak akses ke sumber daya ini."
+          "Akun ini tidak punya akses ke halaman tersebut."
         );
       }
 
@@ -166,7 +166,7 @@ export function createAuthMiddleware(
           res,
           403,
           "REVOKED_SESSION",
-          "Sesi perangkat ini telah dicabut atau kedaluwarsa. Silakan lakukan login ulang."
+          "Sesi di perangkat ini sudah berakhir. Silakan masuk kembali."
         );
       }
 
@@ -186,10 +186,10 @@ export function createAuthMiddleware(
           res,
           401,
           "TOKEN_EXPIRED",
-          "Masa berlaku token telah habis. Silakan login kembali."
+          "Sesi login sudah berakhir. Silakan masuk kembali."
         );
       }
-      return sendError(res, 401, "INVALID_TOKEN", "Tanda tangan token otentikasi tidak sah.");
+      return sendError(res, 401, "INVALID_TOKEN", "Sesi login tidak valid. Silakan masuk kembali.");
     }
   };
 }

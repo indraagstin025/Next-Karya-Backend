@@ -16,6 +16,7 @@ const DUMMY_BCRYPT_HASH =
 
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_WINDOW_SEC = 900;
+const STAFF_SESSION_SECONDS = 7 * 24 * 60 * 60;
 
 export interface AuthServiceDeps {
   prisma: PrismaClient;
@@ -87,7 +88,7 @@ export class AuthService {
       });
       throw AppError.forbidden(
         "ACCOUNT_DISABLED",
-        "Akun staf ini sedang dinonaktifkan."
+        "Akun ini sedang dinonaktifkan. Hubungi admin."
       );
     }
 
@@ -102,7 +103,7 @@ export class AuthService {
 
     const accessToken = jwt.sign(payload, this.deps.env.JWT_SECRET, {
       algorithm: "HS256",
-      expiresIn: 86400,
+      expiresIn: STAFF_SESSION_SECONDS,
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
       jwtid: crypto.randomUUID(),
@@ -111,7 +112,7 @@ export class AuthService {
     await this.deps.cache.set(
       `auth:token_ver:${user.id}`,
       user.tokenVersion.toString(),
-      86400
+      STAFF_SESSION_SECONDS
     );
 
     this.deps.logger.info("Staff login successful", {
@@ -121,7 +122,7 @@ export class AuthService {
 
     return {
       accessToken,
-      expiresIn: 86400,
+      expiresIn: STAFF_SESSION_SECONDS,
       user: {
         id: user.id,
         email: user.email,
@@ -174,7 +175,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw AppError.notFound("Pengguna tidak ditemukan.", "USER_NOT_FOUND");
+      throw AppError.notFound("Akun tidak ditemukan.", "USER_NOT_FOUND");
     }
 
     const [updatedUser] = await this.deps.prisma.$transaction([
@@ -215,7 +216,7 @@ export class AuthService {
     });
 
     return {
-      message: "Seluruh sesi perangkat untuk staf ini berhasil dicabut.",
+      message: "Semua perangkat untuk akun ini sudah dikeluarkan. Yang bersangkutan perlu masuk kembali.",
       newTokenVersion: updatedUser.tokenVersion,
       auditLogged: true,
     };

@@ -12,6 +12,7 @@ import { CmsService } from "../services/cms.service";
 import { CrmService } from "../services/crm.service";
 import { EmergencyService } from "../services/emergency.service";
 import { MediaService } from "../services/media.service";
+import { IStorageService, createStorageService } from "../services/storage.service";
 import { PublicService } from "../services/public.service";
 import { AuthController } from "../controllers/auth.controller";
 import { AnalyticsController } from "../controllers/analytics.controller";
@@ -47,6 +48,7 @@ export interface AppContainer {
   logger: ILogger;
   tenantGuard: ITenantGuard;
   webhook: IWebhookNotifier;
+  storage: IStorageService;
 
   services: {
     auth: AuthService;
@@ -88,6 +90,7 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
   const tenantGuard = overrides.tenantGuard ?? new TenantGuard();
   const webhook =
     overrides.webhook ?? new WebhookNotifier(env.FRONTEND_URL, env.WEBHOOK_SECRET, logger);
+  const storage = createStorageService(env);
 
   const sharedDeps: ServiceDependencies = {
     prisma,
@@ -103,7 +106,7 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
   const cmsService = new CmsService(sharedDeps);
   const crmService = new CrmService(sharedDeps);
   const emergencyService = new EmergencyService(sharedDeps);
-  const mediaService = new MediaService(sharedDeps);
+  const mediaService = new MediaService({ ...sharedDeps, storage });
   const publicService = new PublicService(sharedDeps);
 
   const authController = new AuthController(authService);
@@ -126,6 +129,7 @@ export function createAppContainer(overrides: ContainerOverrides = {}): AppConta
     logger,
     tenantGuard,
     webhook,
+    storage,
     services: {
       auth: authService,
       analytics: analyticsService,

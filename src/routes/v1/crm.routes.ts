@@ -45,6 +45,11 @@ export function createCrmRouter(container: AppContainer = appContainer): Router 
     validateBody(updateScheduleSchema),
     crmController.updateSchedule
   );
+  router.delete(
+    "/schedules/:id",
+    validateParams(idParamSchema),
+    crmController.deleteSchedule
+  );
 
   return router;
 }

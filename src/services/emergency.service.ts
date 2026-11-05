@@ -177,7 +177,7 @@ export class EmergencyService {
     });
 
     return {
-      message: "Konten berhasil diturunkan darurat ke status DRAFT.",
+      message: "Konten berhasil ditarik dari publikasi dan dijadikan draf.",
       auditLogId: auditLog.id,
       actionType: "UNPUBLISH_CONTENT",
       executedAt: auditLog.createdAt,
@@ -232,7 +232,7 @@ export class EmergencyService {
     });
 
     return {
-      message: "Formulir kontak publik berhasil dikunci secara darurat.",
+      message: "Formulir kontak berhasil ditutup sementara.",
       auditLogId: auditLog.id,
       actionType: "LOCK_CONTACT_FORM",
       executedAt: auditLog.createdAt,
@@ -286,7 +286,7 @@ export class EmergencyService {
     });
 
     return {
-      message: "Formulir kontak publik berhasil dibuka kembali.",
+      message: "Formulir kontak berhasil dibuka kembali.",
       auditLogId: auditLog.id,
       actionType: "UNLOCK_CONTACT_FORM",
       executedAt: auditLog.createdAt,
@@ -379,7 +379,7 @@ export class EmergencyService {
     if (!lead) throw AppError.notFound("Prospek tidak ditemukan.");
     if (!targetStaff) {
       throw AppError.notFound(
-        "Staf tujuan tidak ditemukan atau tidak aktif."
+        "Staf yang dipilih tidak ditemukan atau sudah tidak aktif."
       );
     }
 

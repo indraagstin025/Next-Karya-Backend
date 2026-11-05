@@ -9,6 +9,6 @@ export function notFoundHandler(req: Request, res: Response) {
     res,
     404,
     "ROUTE_NOT_FOUND",
-    `Endpoint ${req.method} ${req.path} tidak ditemukan pada layanan API.`
+    "Halaman atau data yang diminta tidak ditemukan."
   );
 }

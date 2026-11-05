@@ -5,6 +5,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { MediaService } from "../services/media.service";
 import { env } from "../config/env";
+import { MEDIA_MIME_EXTENSIONS, maxBytesForMime } from "../config/media";
 import { sendSuccess, sendPaginated, sendError } from "../utils/response";
 import { defaultTenantGuard } from "../utils/optimistic";
 import { ITenantGuard } from "../container/types";
@@ -14,13 +15,12 @@ if (!fs.existsSync(uploadDirPath)) {
   fs.mkdirSync(uploadDirPath, { recursive: true });
 }
 
-const allowedMimeToExt: Record<string, string[]> = {
-  "image/webp": [".webp"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-  "image/svg+xml": [".svg"],
-  "application/pdf": [".pdf"],
-};
+const allowedMimeToExt: Record<string, string[]> = Object.fromEntries(
+  Object.entries(MEDIA_MIME_EXTENSIONS).map(([mime, ext]) => [
+    mime,
+    mime === "image/jpeg" ? [ext, ".jpeg"] : [ext],
+  ])
+);
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -122,20 +122,20 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
     if (mimeType === "image/png") {
       const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
       if (buf.length < 24 || !buf.subarray(0, 8).equals(pngMagic)) {
-        return { valid: false, reason: "Tanda tangan berkas PNG tidak valid atau palsu." };
+        return { valid: false, reason: "Berkas ini bukan gambar PNG yang benar." };
       }
       if (buf.toString("ascii", 12, 16) !== "IHDR") {
-        return { valid: false, reason: "Struktur chunk IHDR berkas PNG rusak." };
+        return { valid: false, reason: "Struktur gambar PNG rusak dan tidak bisa dibuka." };
       }
       const width = buf.readUInt32BE(16);
       const height = buf.readUInt32BE(20);
       if (width === 0 || height === 0) {
-        return { valid: false, reason: "Dimensi gambar PNG tidak valid (0 piksel)." };
+        return { valid: false, reason: "Ukuran gambar PNG tidak terbaca dengan benar." };
       }
       if (width > 8000 || height > 8000) {
         return {
           valid: false,
-          reason: `Dimensi gambar (${width}x${height}px) melebihi batas aman maksimal 8000x8000 piksel.`,
+          reason: `Gambar terlalu besar (${width} x ${height} piksel). Maksimal 8000 x 8000 piksel.`,
         };
       }
       const iendChunk = Buffer.from([0x49, 0x45, 0x4e, 0x44]);
@@ -143,7 +143,7 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
       if (iendIndex === -1 || iendIndex < buf.length - 16) {
         return {
           valid: false,
-          reason: "Berkas PNG rusak atau terpotong (chunk akhir IEND tidak ditemukan).",
+          reason: "Gambar PNG rusak atau tidak lengkap.",
         };
       }
       return { valid: true, width, height };
@@ -151,7 +151,7 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
 
     if (mimeType === "image/jpeg") {
       if (buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) {
-        return { valid: false, reason: "Tanda tangan berkas JPEG tidak valid atau palsu." };
+        return { valid: false, reason: "Berkas ini bukan gambar JPEG yang benar." };
       }
       const lastBytes = buf.subarray(Math.max(0, buf.length - 128));
       let hasEoi = false;
@@ -164,7 +164,7 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
       if (!hasEoi) {
         return {
           valid: false,
-          reason: "Berkas JPEG rusak atau terpotong (marker akhir EOI tidak ditemukan).",
+          reason: "Gambar JPEG rusak atau tidak lengkap.",
         };
       }
       const dims = extractJpegDimensions(buf);
@@ -172,7 +172,7 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
         if (dims.width > 8000 || dims.height > 8000) {
           return {
             valid: false,
-            reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.`,
+            reason: `Gambar terlalu besar (${dims.width} x ${dims.height} piksel). Maksimal 8000 x 8000 piksel.`,
           };
         }
         return { valid: true, width: dims.width, height: dims.height };
@@ -185,14 +185,14 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
         buf.toString("ascii", 0, 4) !== "RIFF" ||
         buf.toString("ascii", 8, 12) !== "WEBP"
       ) {
-        return { valid: false, reason: "Tanda tangan berkas WebP tidak valid atau palsu." };
+        return { valid: false, reason: "Berkas ini bukan gambar WebP yang benar." };
       }
       const declaredSize = buf.readUInt32LE(4) + 8;
       if (buf.length < declaredSize) {
         return {
           valid: false,
           reason:
-            "Berkas WebP rusak atau terpotong (ukuran berkas lebih kecil dari deklarasi header).",
+            "Gambar WebP rusak atau tidak lengkap.",
         };
       }
       const dims = extractWebpDimensions(buf);
@@ -200,7 +200,7 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
         if (dims.width > 8000 || dims.height > 8000) {
           return {
             valid: false,
-            reason: `Dimensi gambar (${dims.width}x${dims.height}px) melebihi batas aman maksimal 8000x8000 piksel.`,
+            reason: `Gambar terlalu besar (${dims.width} x ${dims.height} piksel). Maksimal 8000 x 8000 piksel.`,
           };
         }
         return { valid: true, width: dims.width, height: dims.height };
@@ -214,7 +214,7 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
         return {
           valid: false,
           reason:
-            "Format SVG tidak lengkap atau rusak (tidak memiliki tag <svg> pembuka dan penutup).",
+            "Gambar SVG tidak lengkap atau rusak.",
         };
       }
       const lower = content.toLowerCase();
@@ -234,7 +234,7 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
         if (lower.includes(pat)) {
           return {
             valid: false,
-            reason: `Berkas SVG ditolak demi keamanan karena mengandung pola berbahaya: ${pat}`,
+            reason: "Berkas SVG ditolak karena berisi kode yang berbahaya.",
           };
         }
       }
@@ -243,23 +243,23 @@ export function validateFileIntegrity(filePath: string, mimeType: string): FileV
 
     if (mimeType === "application/pdf") {
       if (buf.toString("ascii", 0, 5) !== "%PDF-") {
-        return { valid: false, reason: "Tanda tangan berkas PDF tidak valid atau palsu." };
+        return { valid: false, reason: "Berkas ini bukan PDF yang benar." };
       }
       const lastBytes = buf.subarray(Math.max(0, buf.length - 1024)).toString("ascii");
       if (!lastBytes.includes("%%EOF")) {
         return {
           valid: false,
-          reason: "Berkas PDF rusak atau terpotong (marker %%EOF tidak ditemukan).",
+          reason: "Berkas PDF rusak atau tidak lengkap.",
         };
       }
       return { valid: true };
     }
 
-    return { valid: false, reason: "Tipe berkas tidak didukung." };
+    return { valid: false, reason: "Jenis berkas ini tidak didukung." };
   } catch (err: any) {
     return {
       valid: false,
-      reason: `Gagal memverifikasi keutuhan berkas: ${err?.message || "Kesalahan pembacaan"}`,
+      reason: "Berkas tidak bisa diperiksa. Coba unggah ulang.",
     };
   }
 }
@@ -322,12 +322,12 @@ export class MediaController {
   uploadMedia = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.file) {
-        return sendError(res, 400, "MISSING_FILE", "Berkas unggahan wajib disertakan.");
+        return sendError(res, 400, "MISSING_FILE", "Pilih berkas yang akan diunggah.");
       }
 
       const file = req.file;
       const isPdf = file.mimetype === "application/pdf";
-      const maxAllowedSize = isPdf ? 10 * 1024 * 1024 : 5 * 1024 * 1024;
+      const maxAllowedSize = maxBytesForMime(file.mimetype) ?? 5 * 1024 * 1024;
 
       if (file.size > maxAllowedSize) {
         if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
@@ -335,7 +335,7 @@ export class MediaController {
           res,
           400,
           "FILE_TOO_LARGE",
-          `Ukuran berkas melebihi batas maksimal (${isPdf ? "10 MB untuk PDF" : "5 MB untuk Gambar"}).`
+          `Berkas terlalu besar. ${isPdf ? "Maksimal 10 MB untuk PDF." : "Maksimal 5 MB untuk gambar."}`
         );
       }
 
@@ -347,7 +347,7 @@ export class MediaController {
           400,
           "CORRUPTED_OR_INVALID_FILE",
           validation.reason ||
-            "Berkas gambar rusak, terpotong, atau tidak memenuhi standar keamanan."
+            "Berkas rusak atau tidak bisa dibuka. Coba unggah berkas lain."
         );
       }
 
@@ -396,6 +396,84 @@ export class MediaController {
           // ignore cleanup failure
         }
       }
+      next(err);
+    }
+  };
+
+  /**
+   * Issues a short-lived Supabase signed upload URL. The client sends file bytes directly
+   * to the bucket; this endpoint only receives metadata.
+   */
+  createUploadUrl = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const body = req.body as {
+        originalName: string;
+        mimeType: string;
+        fileSize: number;
+        altText?: string;
+        width?: number;
+        height?: number;
+      };
+
+      const result = await this.mediaService.createUploadTicket({
+        siteId: site_id,
+        uploaderId: req.user!.id,
+        originalName: body.originalName,
+        mimeType: body.mimeType,
+        fileSize: body.fileSize,
+        altText: body.altText,
+        width: body.width,
+        height: body.height,
+      });
+
+      return sendSuccess(res, result, 201);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Confirms a direct upload by checking the stored object metadata before persisting
+   * the media row. No file bytes are handled by the backend.
+   */
+  confirmUpload = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const body = req.body as {
+        ticketId: string;
+        altText?: string;
+        width?: number;
+        height?: number;
+      };
+
+      const media = await this.mediaService.confirmUpload({
+        ticketId: body.ticketId,
+        siteId: site_id,
+        uploaderId: req.user!.id,
+        altText: body.altText,
+        width: body.width,
+        height: body.height,
+      });
+
+      return sendSuccess(res, media, 201);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /**
+   * Updates editable metadata for an existing media asset, currently the alt text.
+   */
+  updateMedia = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id as string;
+      const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
+      const media = await this.mediaService.updateMedia(id, site_id, {
+        altText: req.body.altText,
+      });
+      return sendSuccess(res, media);
+    } catch (err) {
       next(err);
     }
   };

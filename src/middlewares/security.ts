@@ -82,7 +82,7 @@ export function createSecurityMiddleware(logger: ILogger = defaultLogger) {
         ip: req.ip,
         path: req.path,
       });
-      return sendError(res, 400, "BAD_REQUEST", "Permintaan mengandung karakter ilegal.");
+      return sendError(res, 400, "BAD_REQUEST", "Alamat yang dibuka memuat karakter yang tidak diizinkan.");
     }
 
     // Flatten duplicate query parameters to the last value to prevent HPP type confusion.
@@ -111,7 +111,7 @@ export function createSecurityMiddleware(logger: ILogger = defaultLogger) {
         res,
         400,
         "MALICIOUS_PAYLOAD",
-        "Struktur payload tidak diizinkan demi keamanan sistem."
+        "Data yang dikirim tidak bisa diproses karena alasan keamanan."
       );
     }
 

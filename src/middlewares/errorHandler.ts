@@ -39,12 +39,30 @@ export function createErrorHandler(logger: ILogger = defaultLogger) {
       );
     }
 
+    if (err?.type === "entity.parse.failed") {
+      return sendError(
+        res,
+        400,
+        "INVALID_JSON",
+        "Data yang dikirim tidak terbaca. Muat ulang halaman lalu coba lagi."
+      );
+    }
+
+    if (err?.type === "entity.too.large") {
+      return sendError(
+        res,
+        413,
+        "PAYLOAD_TOO_LARGE",
+        "Data yang dikirim terlalu besar. Kurangi isinya lalu coba lagi."
+      );
+    }
+
     if (err?.message === "UNSUPPORTED_MEDIA_TYPE") {
       return sendError(
         res,
         400,
         "UNSUPPORTED_MEDIA_TYPE",
-        "Format berkas tidak diizinkan. Gunakan WebP, PNG, JPG, SVG, atau PDF."
+        "Berkas ini tidak bisa dipakai. Gunakan WebP, PNG, JPG, SVG, atau PDF."
       );
     }
 
@@ -53,7 +71,7 @@ export function createErrorHandler(logger: ILogger = defaultLogger) {
         res,
         400,
         "FILE_TOO_LARGE",
-        "Ukuran berkas melebihi batas maksimal (5 MB untuk gambar, 10 MB untuk PDF)."
+        "Berkas terlalu besar. Maksimal 5 MB untuk gambar dan 10 MB untuk PDF."
       );
     }
 
@@ -63,7 +81,7 @@ export function createErrorHandler(logger: ILogger = defaultLogger) {
         res,
         409,
         "DUPLICATE_ENTRY",
-        "Slug atau pengenal unik tersebut sudah digunakan. Silakan gunakan nilai yang berbeda."
+        "Alamat tautan atau nama ini sudah dipakai. Silakan gunakan yang lain."
       );
     }
 
@@ -78,7 +96,7 @@ export function createErrorHandler(logger: ILogger = defaultLogger) {
         res,
         400,
         "RELATION_CONSTRAINT_ERROR",
-        "Referensi relasi data tidak sah atau data masih digunakan oleh entitas lain."
+        "Data ini masih dipakai di bagian lain, jadi belum bisa dihapus."
       );
     }
 
@@ -95,8 +113,8 @@ export function createErrorHandler(logger: ILogger = defaultLogger) {
 
     const errorMessage =
       statusCode === 500
-        ? "Terjadi kesalahan sistem internal tak terduga."
-        : err?.message || "Permintaan tidak dapat diproses.";
+        ? "Ada gangguan di layanan kami. Coba lagi beberapa saat lagi."
+        : err?.message || "Permintaan belum bisa diproses.";
 
     return sendError(res, statusCode, errorCode, errorMessage, undefined, err?.currentData);
   };

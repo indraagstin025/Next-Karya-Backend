@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodSchema, ZodError, z } from "zod";
+import "../validators/locale";
 import { sendError, ErrorDetail } from "../utils/response";
 
 export const idParamSchema = z
@@ -7,9 +8,9 @@ export const idParamSchema = z
     id: z
       .string()
       .trim()
-      .min(1, "ID wajib diisi")
-      .max(64, "ID maksimal 64 karakter")
-      .regex(/^[a-zA-Z0-9_-]+$/, "Format ID tidak valid"),
+      .min(1, "Data yang dipilih tidak valid")
+      .max(64, "Data yang dipilih tidak valid")
+      .regex(/^[a-zA-Z0-9_-]+$/, "Data yang dipilih tidak dikenal"),
   })
   .strict();
 
@@ -18,9 +19,12 @@ export const slugParamSchema = z
     slug: z
       .string()
       .trim()
-      .min(1, "Slug wajib diisi")
-      .max(255, "Slug maksimal 255 karakter")
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Format slug tidak valid"),
+      .min(1, "Alamat tautan wajib diisi")
+      .max(255, "Alamat tautan maksimal 255 karakter")
+      .regex(
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+        "Alamat tautan hanya boleh berisi huruf kecil, angka, dan tanda hubung (-)"
+      ),
   })
   .strict();
 
@@ -43,11 +47,11 @@ export function validateBody(schema: ZodSchema) {
           res,
           400,
           "VALIDATION_ERROR",
-          "Validasi data input gagal diproses.",
+          "Ada isian yang belum sesuai. Periksa kembali kolom yang ditandai.",
           details
         );
       }
-      return sendError(res, 400, "BAD_REQUEST", "Format data tidak valid.");
+      return sendError(res, 400, "BAD_REQUEST", "Data yang dikirim belum sesuai.");
     }
   };
 }
@@ -70,11 +74,11 @@ export function validateQuery(schema: ZodSchema) {
           res,
           400,
           "QUERY_VALIDATION_ERROR",
-          "Validasi parameter query gagal diproses.",
+          "Pilihan filter belum sesuai. Periksa kembali.",
           details
         );
       }
-      return sendError(res, 400, "BAD_REQUEST", "Parameter query tidak valid.");
+      return sendError(res, 400, "BAD_REQUEST", "Pilihan filter belum sesuai.");
     }
   };
 }
@@ -98,11 +102,11 @@ export function validateParams(schema: ZodSchema = idParamSchema) {
           res,
           400,
           "PARAM_VALIDATION_ERROR",
-          "Parameter rute tidak valid.",
+          "Alamat halaman belum benar.",
           details
         );
       }
-      return sendError(res, 400, "BAD_REQUEST", "Parameter rute tidak valid.");
+      return sendError(res, 400, "BAD_REQUEST", "Alamat halaman belum benar.");
     }
   };
 }

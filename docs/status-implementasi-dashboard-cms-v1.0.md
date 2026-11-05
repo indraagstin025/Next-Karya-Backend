@@ -3,13 +3,14 @@
 *Laporan Audit Kesiapan Fitur Fase 1 (MVP) Berdasarkan Spesifikasi Kanonik di Folder docs/*  
 *Versi Dokumen: v1.0 Kanonik*  
 *Tanggal Audit: 2 November 2026*  
+*Pembaruan Terakhir: 5 November 2026*  
 *Dokumen Rujukan: `analytics-v2.2.md`, `cms-v2.2.md`, `api-contracts-v1.0.md`, `schema-database-v1.1.md`, `architecture-desktop-vs-mobile-v1.1.md`*
 
 ---
 
 ## 1. Ringkasan Eksekutif
 
-Dokumen ini menyajikan rekapitulasi lengkap mengenai seluruh fitur, modul, dan arsitektur teknis pada **Dashboard Analitik** dan **Content Management System (CMS)** yang telah **selesai 100% diimplementasikan pada Fase 1 (MVP)**, serta memetakannya terhadap spesifikasi kanonik pada direktori `backend/docs/`.
+Dokumen ini menyajikan rekapitulasi lengkap mengenai seluruh fitur, modul, dan arsitektur teknis pada **Dashboard Analitik** dan **Content Management System (CMS)** yang telah diimplementasikan pada Fase 1 (MVP), serta memetakannya terhadap spesifikasi kanonik pada direktori `backend/docs/`. Perbaikan terbaru dan batasan yang masih tersisa dicatat pada Bagian 6.
 
 Implementasi mencakup dua sisi sistem terintegrasi:
 1. **Backend Engine (`Next-Karya-Backend`):** Express.js, Prisma ORM, PostgreSQL, Redis Caching, Zod Runtime Validation, dan Rate Limiting.
@@ -107,11 +108,11 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
 * **Status Siklus Hidup Konten:**
   - *Implementasi:* Mendukung status baku `DRAFT`, `PUBLISHED`, dan `ARCHIVED`. Penjadwalan otomatis terbit masa depan dialokasikan untuk Fase 2.
 
-### Pilar 3: Pengelola Media Terpusat (Media Asset Manager) [STATUS: SELESAI FASE 1]
+### Pilar 3: Pengelola Media Terpusat (Media Asset Manager) [STATUS: SELESAI FASE 1 + SUPABASE DIRECT UPLOAD]
 * **Pustaka Media Universal:**
-  - *Implementasi:* Model `Media` siap menyimpan berkas gambar (WebP, PNG, JPG, SVG) dengan partisi `site_id`, pelacakan ukuran file, tipe MIME, dan dimensi resolusi gambar.
+  - *Implementasi:* Model `Media` menyimpan berkas gambar (WebP, PNG, JPG, SVG) dan PDF dengan partisi `site_id`, pelacakan ukuran file, tipe MIME, serta dimensi resolusi gambar.
 * **Integrasi Cloud Storage:**
-  - *Implementasi:* Struktur disiapkan untuk integrasi S3 / R2 / Supabase Storage.
+  - *Implementasi:* Supabase Storage aktif melalui `STORAGE_DRIVER=supabase`. Browser mengunggah byte langsung ke bucket memakai signed upload URL sementara; backend hanya membuat URL, memverifikasi metadata objek, dan menyimpan baris `Media`. CRUD media mencakup daftar, konfirmasi upload, ubah teks alternatif, dan hapus objek. Fallback multipart lokal tetap tersedia saat `STORAGE_DRIVER=local`.
 
 ### Pilar 4: Pengaturan SEO & Pratinjau Sosial [STATUS: SELESAI]
 * **SEO On-Page per Konten:**
@@ -139,26 +140,26 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
 
 | Modul | Fitur / Komponen | Dokumen Rujukan | Status Implementasi | Catatan Operasional |
 | :--- | :--- | :--- | :---: | :--- |
-| **Analitik** | Multi-Tenancy Dasar (`site_id`) | `analytics-v2.2.md` §1.1 | **SELESAI (100%)** | Seluruh event terikat ke `site_id: "nextkarya-main"` |
-| **Analitik** | Pelacak Sinyal Ringan (< 2 KB) | `analytics-v2.2.md` §3.1 | **SELESAI (100%)** | Non-blocking via `navigator.sendBeacon` |
-| **Analitik** | Rate Limiting Telemetri (60 req/min) | `analytics-v2.2.md` §3.2 | **SELESAI (100%)** | Mencegah banjir spam bot pada endpoint event |
-| **Analitik** | Metrik Top-Line (Views, Visitors, Bounces) | `analytics-v2.2.md` §2 (Pilar 1) | **SELESAI (100%)** | Tampil riil dari basis data tanpa data dummy |
-| **Analitik** | Pelacakan Konversi WhatsApp & Form | `analytics-v2.2.md` §2 (Pilar 2) | **SELESAI (100%)** | Menghitung rasio konversi riil calon klien |
-| **Analitik** | Tabel Halaman Populer (*Top Pages*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI (100%)** | Peringkat URL tayangan, pantulan, dan prospek |
-| **Analitik** | Saluran Rujukan (*Traffic Sources*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI (100%)** | Donut Chart & Bar Chart Google, Sosmed, Direct |
-| **Analitik** | Filter Waktu Mandiri (Hari Ini, 7d, 30d) | `analytics-v2.2.md` §2 (Pilar 5) | **SELESAI (100%)** | Berjalan di peramban staf tanpa bentrok sesi |
+| **Analitik** | Multi-Tenancy Dasar (`site_id`) | `analytics-v2.2.md` §1.1 | **SELESAI** | Seluruh event terikat ke `site_id: "nextkarya-main"` |
+| **Analitik** | Pelacak Sinyal Ringan (< 2 KB) | `analytics-v2.2.md` §3.1 | **SELESAI** | Non-blocking via `navigator.sendBeacon` |
+| **Analitik** | Rate Limiting Telemetri (60 req/min) | `analytics-v2.2.md` §3.2 | **SELESAI** | Mencegah banjir spam bot pada endpoint event |
+| **Analitik** | Metrik Top-Line (Views, Visitors, Bounces) | `analytics-v2.2.md` §2 (Pilar 1) | **SELESAI** | Tampil riil dari basis data tanpa data dummy |
+| **Analitik** | Pelacakan Konversi WhatsApp & Form | `analytics-v2.2.md` §2 (Pilar 2) | **SELESAI** | Menghitung rasio konversi riil calon klien |
+| **Analitik** | Tabel Halaman Populer (*Top Pages*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI** | Peringkat URL tayangan, pantulan, dan prospek |
+| **Analitik** | Saluran Rujukan (*Traffic Sources*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI** | Donut Chart & Bar Chart Google, Sosmed, Direct |
+| **Analitik** | Filter Waktu Mandiri (Hari Ini, 7d, 30d) | `analytics-v2.2.md` §2 (Pilar 5) | **SELESAI** | Berjalan di peramban staf tanpa bentrok sesi |
 | **Analitik** | Ekspor Laporan CSV / Excel | `analytics-v2.2.md` §4 (#13) | **FASE 2** | Dialokasikan untuk pelaporan manajemen lanjutan |
 | **Analitik** | Pemetaan Wilayah GeoIP & UTM Detail | `analytics-v2.2.md` §4 (#11-12) | **FASE 2** | Dialokasikan untuk kampanye berbayar lanjutan |
 | **Analitik** | Portal Mandiri Khusus Akun Klien | `analytics-v2.2.md` §4 (#14) | **FASE 2** | Pembukaan akses klien luar di masa depan |
-| **CMS** | Skema Database Multi-Tenant (20 Tabel) | `schema-database-v1.1.md` | **SELESAI (100%)** | Skema Prisma terpasang dengan ACID PostgreSQL |
-| **CMS** | Manajemen Artikel & Blog | `cms-v2.2.md` §2 (Pilar 1) | **SELESAI (100%)** | Editor teks, metadata SEO, kategori, tag, waktu baca |
-| **CMS** | Portofolio & Studi Kasus Bisnis | `cms-v2.2.md` §2 (Pilar 1) | **SELESAI (100%)** | Metrik keberhasilan, tech stack, dan galeri |
-| **CMS** | Layanan, FAQ, Testimoni & Halaman | `cms-v2.2.md` §2 (Pilar 1) | **SELESAI (100%)** | Modul terstruktur lengkap siap pakai |
-| **CMS** | Auto-Snapshot 5 Versi (Rolling FIFO) | `cms-v2.2.md` §2 (Pilar 2) | **SELESAI (100%)** | Pemulihan versi instan (< 5 detik) |
-| **CMS** | Soft Delete / Arsip Pengaman | `cms-v2.2.md` §2 (Pilar 2) | **SELESAI (100%)** | Menghindari kehilangan data permanen |
-| **CMS** | Optimistic Locking (`updatedAt`) | `cms-v2.2.md` §2 (Pilar 6) | **SELESAI (100%)** | Melindungi 3 staf dari tabrakan editan bersamaan |
-| **CMS** | Emergency Toolkit & Audit Trail | `cms-v2.2.md` §2 (Pilar 6) | **SELESAI (100%)** | Takedown 1 sentuhan, kunci form, banner darurat |
-| **CMS** | Webhook Revalidation (`x-webhook-secret`) | `cms-v2.2.md` §2 (Pilar 5) | **SELESAI (100%)** | Pembersihan cache Next.js aman via HTTP header |
+| **CMS** | Skema Database Multi-Tenant (20 Tabel) | `schema-database-v1.1.md` | **SELESAI** | Skema Prisma terpasang dengan ACID PostgreSQL |
+| **CMS** | Manajemen Artikel & Blog | `cms-v2.2.md` §2 (Pilar 1) | **SELESAI** | Editor teks, metadata SEO, kategori, tag, waktu baca |
+| **CMS** | Portofolio & Studi Kasus Bisnis | `cms-v2.2.md` §2 (Pilar 1) | **SELESAI** | Metrik keberhasilan, tech stack, dan galeri |
+| **CMS** | Layanan, FAQ, Testimoni & Halaman | `cms-v2.2.md` §2 (Pilar 1) | **SELESAI** | Modul terstruktur lengkap siap pakai |
+| **CMS** | Auto-Snapshot 5 Versi (Rolling FIFO) | `cms-v2.2.md` §2 (Pilar 2) | **SELESAI** | Pemulihan versi instan (< 5 detik) |
+| **CMS** | Soft Delete / Arsip Pengaman | `cms-v2.2.md` §2 (Pilar 2) | **SELESAI** | Menghindari kehilangan data permanen |
+| **CMS** | Optimistic Locking (`updatedAt`) | `cms-v2.2.md` §2 (Pilar 6) | **SELESAI** | Melindungi 3 staf dari tabrakan editan bersamaan |
+| **CMS** | Emergency Toolkit & Audit Trail | `cms-v2.2.md` §2 (Pilar 6) | **SELESAI** | Takedown 1 sentuhan, kunci form, banner darurat |
+| **CMS** | Webhook Revalidation (`x-webhook-secret`) | `cms-v2.2.md` §2 (Pilar 5) | **SELESAI** | Pembersihan cache Next.js aman via HTTP header |
 | **CMS** | Penjadwalan Terbit Otomatis (*Scheduled*) | `cms-v2.2.md` §3 (#13) | **FASE 2** | Penerbitan artikel berdasarkan jam masa depan |
 | **CMS** | Otomasi 301 Redirect saat Slug Berubah | `cms-v2.2.md` §3 (#15) | **FASE 2** | Deteksi otomatis pembaruan slug URL |
 
@@ -175,8 +176,7 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
   - [`src/controllers/analytics.controller.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/controllers/analytics.controller.ts) : Handler HTTP untuk overview, pages, dan sources.
   - [`src/routes/v1/analytics.routes.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/routes/v1/analytics.routes.ts) : Rute endpoint analitik berotorisasi.
 * **Layanan CMS & Penanganan Konten:**
-  - [`src/services/post.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/post.service.ts) : Logika bisnis artikel dan snapshot otomatis.
-  - [`src/services/portfolio.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/portfolio.service.ts) : Logika portofolio dan studi kasus bisnis.
+  - [`src/services/cms.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/cms.service.ts) : Logika bisnis artikel, portofolio, layanan, halaman, dan snapshot otomatis.
   - [`src/services/emergency.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/emergency.service.ts) : Operasi toolkit darurat dan audit log.
 
 ### Sisi Frontend Interface (`frontend/`)
@@ -198,9 +198,72 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
 
 ---
 
-## 6. Kesimpulan Hasil Audit
+## 6. Catatan Perbaikan v1.1 (2 November 2026)
+
+Audit lanjutan menemukan beberapa cacat implementasi yang membuat sebagian fitur belum berjalan end-to-end. Perbaikan berikut sudah diterapkan:
+
+### 6.1 Analitik
+- Rollup cron memakai nama kolom yang salah (`updated_at`, `session_id`, dan seterusnya) serta unique key yang tidak cocok. Rollup ditulis ulang dengan nama kolom camelCase dan `ON CONFLICT (site_id, "date", path, source, device)`.
+- Rollup kini menghitung ulang dua hari penuh dan menulis empat granularitas: global, per halaman, per sumber, dan per perangkat. Baris agregat yang dibaca dashboard kini benar-benar dibuat oleh rollup.
+- `visitors` dihitung dari `visitorIdHash`, bukan `sessionId`.
+- Bounce rate dihitung dari sesi satu halaman tanpa heartbeat atau konversi.
+- Event `form_submit` kini dikirim setelah submit form kontak berhasil.
+- Tersedia `npm run analytics:backfill -- 90` untuk mengisi ulang data historis.
+
+### 6.2 CRM
+- Catatan lead dikirim sebagai `notes` (sebelumnya `note`) sehingga validator menerima.
+- Jadwal dikirim dengan format `YYYY-MM-DD` (sebelumnya ISO lengkap) dan PIC wajib dipilih.
+- Endpoint `DELETE /api/v1/crm/schedules/:id` ditambahkan beserta activity log.
+- Perubahan jadwal dicatat sebagai `SCHEDULE_SHIFTED`.
+
+### 6.3 Form Kontak
+- Form kini mengumpulkan nomor WhatsApp wajib; nomor hardcoded dihapus.
+- Aksi server tidak lagi mengembalikan sukses saat backend menolak permintaan. Respons 429, validasi, dan kegagalan server kini tampil sebagai pesan gagal yang sesuai.
+
+### 6.4 Keamanan & Konfigurasi
+- Fallback secret hardcoded di proxy dan endpoint revalidate dihapus; sistem fail-closed.
+- Proxy memverifikasi `iss` dan `aud` token.
+- Hashing IP dipisahkan dari modul sesi NAYKON dan memakai `CONTACT_IP_HASH_SECRET`; secret terpisah sudah diisi di `.env.local`.
+- Rewrite `/uploads` mengikuti env backend, bukan `localhost`.
+- `.env.example` frontend diperbarui.
+
+### 6.5 Test
+- Vitest ditambahkan di backend dan frontend.
+- Cakupan: agregasi analitik, validator CRM, hapus jadwal, schema kontak, dan validator publik.
+- Jumlah test saat ini: 14 backend dan 10 frontend.
+
+### 6.6 Perbaikan lanjutan (2 November 2026)
+- Dashboard memakai `Lead.dealValue` asli untuk kartu estimasi nilai dan tabel prospek. Nominal karangan, metode pembayaran palsu, dan persentase tren buatan dihapus.
+- Filter tanggal dashboard memakai zona waktu `Asia/Jakarta`, termasuk rentang Hari Ini, 7 Hari, dan 30 Hari.
+- Perbandingan periode sebelumnya untuk rentang satu hari kini memakai hari sebelumnya, bukan rentang nol hari.
+- Rollup analitik membucket event per tanggal Jakarta, bukan tanggal sesi database, dan menghapus baris lama pada rentang yang dihitung ulang agar data stale tidak tertinggal.
+- Backfill diperlukan sekali setelah deploy untuk menyelaraskan bucket tanggal historis.
+
+### 6.7 Penyelesaian Celah CMS dan Dashboard (5 November 2026)
+- **Blok kode artikel:** editor menerima blok kode berpagar (tiga backtick) dan renderer publik menampilkannya sebagai `<pre><code>` dengan label bahasa. Sanitasi mempertahankan baris baru dan tab, tetapi tetap membuang karakter kontrol.
+- **Artikel terkait:** editor menyediakan pemilih manual maksimal 10 artikel yang disimpan ke `relatedPostIds`. Halaman blog memprioritaskan pilihan manual dan kembali ke artikel sekategori bila kosong.
+- **Galeri portofolio:** gambar galeri disimpan di `content.gallery` (maksimal 24), diisi dari Pustaka Media, dan ditampilkan pada halaman detail baru `/portofolio/[slug]`.
+- **Detail portofolio:** halaman publik menampilkan ringkasan, dampak bisnis, metrik, teknologi, galeri, tautan proyek, serta metadata canonical dan Open Graph. Sitemap ikut memuat setiap slug portofolio yang terbit.
+- **OG image:** artikel memakai `coverUrl`, portofolio memakai thumbnail, lengkap dengan alt text dan Twitter card.
+- **Redirect global:** rute catch-all memeriksa tabel `Redirect` untuk setiap path tak dikenal sebelum mengembalikan 404, sehingga pengalihan tidak lagi terbatas pada artikel.
+- **Sesi staf 7 hari:** JWT backend, cookie `nk_cms_token`, dan TTL cache versi token memakai masa berlaku 604.800 detik. Sesi bersifat absolut sejak login; perpanjangan otomatis saat ada aktivitas belum diterapkan. Sesi tetap dapat dicabut lebih awal melalui mekanisme darurat `REVOKE_SESSION` yang menaikkan `tokenVersion` staf.
+- **Halaman syarat & ketentuan:** `/syarat-ketentuan` membaca halaman CMS bila tersedia dan memakai konten bawaan bila belum diisi. Tautan ditambahkan ke footer dan sitemap.
+- **Konsistensi angka:** bounce rate dan conversion rate memakai satu desimal di API dan UI.
+- **Publikasi artikel dan cache publik:** seed mengirim revalidasi `all` setelah selesai, sehingga artikel yang baru diisi langsung muncul di halaman publik. Kegagalan API tidak lagi ditampilkan sebagai "belum ada artikel", melainkan pesan gangguan; batas waktu baca konten publik dinaikkan menjadi 8 detik.
+- **Ketahanan sesi dashboard:** sesi kedaluwarsa diarahkan ke `/?sesi=berakhir` dan modal login terbuka dengan penjelasan. Kegagalan sementara `/auth/me` menampilkan halaman "Dashboard belum bisa dimuat" dengan tombol coba lagi, bukan mengalihkan staf ke beranda. Kegagalan muat data di sisi klien menampilkan banner dengan tombol coba lagi.
+- **Uji publikasi end-to-end:** artikel uji dibuat sebagai draf lewat CMS API, lalu dipublikasikan. Artikel muncul di `/blog` dalam 2 detik tanpa revalidasi manual dan halaman detailnya merespons 200. Setelah artikel uji dihapus, cache direvalidasi dan `/blog` kembali bersih sementara artikel kanonik tetap tampil.
+
+### 6.8 Batasan yang masih tersisa
+- Backfill analitik perlu dijalankan sekali setelah deploy agar data historis terisi dan bucket Jakarta konsisten.
+- Pengujian rollup dilakukan terhadap database pembangunan; belum ada test integrasi otomatis dengan PostgreSQL.
+- Cron masih berjalan in-process; deployment multi-instance perlu memindahkannya ke worker.
+- Dokumen ini tidak mengklaim seluruh fitur Fase 2 selesai.
+
+---
+
+## 7. Kesimpulan Hasil Audit
 
 Berdasarkan seluruh kriteria pada dokumen kanonik di direktori `backend/docs/`:
-1. **Dashboard Analitik Fase 1 (MVP)** telah **selesai 100%**, mencakup penjejakan sinyal publik non-blocking, agregasi metrik di PostgreSQL, filter rentang waktu mandiri per staf, visualisasi grafik interaktif, dan pembersihan total dari data tiruan.
-2. **Sistem CMS Fase 1 (MVP)** telah **selesai 100%**, mencakup manajemen konten multi-entitas berpartisi `site_id`, perlindungan auto-snapshot 5 versi rolling FIFO, pengamanan konflik editan via Optimistic Locking, alur soft delete arsip, dan toolkit darurat.
+1. **Dashboard Analitik Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6, mencakup penjejakan sinyal publik non-blocking, agregasi metrik di PostgreSQL, filter rentang waktu mandiri per staf, visualisasi grafik interaktif, dan pembersihan total dari data tiruan.
+2. **Sistem CMS Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6, mencakup manajemen konten multi-entitas berpartisi `site_id`, perlindungan auto-snapshot 5 versi rolling FIFO, pengamanan konflik editan via Optimistic Locking, alur soft delete arsip, dan toolkit darurat.
 3. Seluruh fitur **Fase 2** (seperti penjadwalan terbit otomatis, ekspor file CSV/Excel, pemetaan GeoIP kota, dan portal mandiri akun klien) telah terdokumentasi rapi pada batas lingkup rilis berikutnya tanpa mengganggu stabilitas operasional sistem saat ini.

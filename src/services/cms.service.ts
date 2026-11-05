@@ -145,7 +145,7 @@ export class CmsService {
     if (existing._count.posts > 0) {
       throw AppError.badRequest(
         "CATEGORY_IN_USE",
-        `Kategori "${existing.name}" masih digunakan oleh ${existing._count.posts} artikel dan tidak dapat dihapus.`
+        `Kategori "${existing.name}" masih dipakai oleh ${existing._count.posts} artikel, jadi belum bisa dihapus.`
       );
     }
 
@@ -232,7 +232,7 @@ export class CmsService {
     if (!category) {
       throw AppError.badRequest(
         "INVALID_CATEGORY",
-        "Kategori yang dipilih tidak ditemukan pada situs ini."
+        "Kategori yang dipilih tidak ditemukan."
       );
     }
 
@@ -284,7 +284,7 @@ export class CmsService {
       if (!category) {
         throw AppError.badRequest(
           "INVALID_CATEGORY",
-          "Kategori yang dipilih tidak valid untuk situs ini."
+          "Kategori yang dipilih tidak tersedia."
         );
       }
     }
@@ -1142,7 +1142,7 @@ export class CmsService {
       if (!portfolio) {
         throw AppError.badRequest(
           "INVALID_PORTFOLIO",
-          "Portofolio referensi tidak ditemukan pada situs ini."
+          "Portofolio yang dipilih tidak ditemukan."
         );
       }
     }
@@ -1188,7 +1188,7 @@ export class CmsService {
       if (!portfolio) {
         throw AppError.badRequest(
           "INVALID_PORTFOLIO",
-          "Portofolio referensi tidak ditemukan pada situs ini."
+          "Portofolio yang dipilih tidak ditemukan."
         );
       }
     }
@@ -1279,7 +1279,7 @@ export class CmsService {
     });
 
     if (!snapshot) {
-      throw AppError.notFound("Snapshot tidak ditemukan.");
+      throw AppError.notFound("Versi data tidak ditemukan.");
     }
 
     const data = snapshot.snapshotPayload as any;
@@ -1289,7 +1289,7 @@ export class CmsService {
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw AppError.notFound("Artikel induk tidak ditemukan.");
+        throw AppError.notFound("Artikel asal tidak ditemukan.");
       }
 
       let resolvedCategoryId = target.categoryId;
@@ -1324,7 +1324,7 @@ export class CmsService {
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw AppError.notFound("Portofolio induk tidak ditemukan.");
+        throw AppError.notFound("Portofolio asal tidak ditemukan.");
       }
       await this.deps.prisma.portfolio.update({
         where: { id: target.id },
@@ -1350,7 +1350,7 @@ export class CmsService {
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw AppError.notFound("Layanan induk tidak ditemukan.");
+        throw AppError.notFound("Layanan asal tidak ditemukan.");
       }
       await this.deps.prisma.service.update({
         where: { id: target.id },
@@ -1374,7 +1374,7 @@ export class CmsService {
         where: { id: snapshot.entityId, site_id },
       });
       if (!target) {
-        throw AppError.notFound("Halaman induk tidak ditemukan.");
+        throw AppError.notFound("Halaman asal tidak ditemukan.");
       }
       await this.deps.prisma.page.update({
         where: { id: target.id },
@@ -1390,7 +1390,7 @@ export class CmsService {
     } else {
       throw AppError.badRequest(
         "UNSUPPORTED_SNAPSHOT_ENTITY",
-        "Tipe entitas snapshot tidak didukung."
+        "Versi data ini belum bisa dipulihkan."
       );
     }
 
@@ -1401,12 +1401,12 @@ export class CmsService {
         action: "CONTENT_STATUS_CHANGED",
         entityType: snapshot.entityType,
         entityId: snapshot.entityId,
-        summary: `Memulihkan konten "${snapshot.title}" dari snapshot versi #${snapshot.version}`,
+        summary: `Mengembalikan konten "${snapshot.title}" ke versi sebelumnya`,
       },
     });
 
     return {
-      message: "Konten berhasil dipulihkan dari snapshot.",
+      message: "Konten berhasil dikembalikan ke versi sebelumnya.",
       snapshotId: snapshot.id,
       entityType: snapshot.entityType,
       entityId: snapshot.entityId,
@@ -1435,7 +1435,7 @@ export class CmsService {
     if (payload.sourcePath === payload.targetPath) {
       throw AppError.badRequest(
         "REDIRECT_LOOP",
-        "URL sumber dan tujuan redirect tidak boleh sama."
+        "Alamat lama dan alamat tujuan tidak boleh sama."
       );
     }
 
@@ -1455,10 +1455,10 @@ export class CmsService {
   async deleteRedirect(id: string, site_id: string) {
     const existing = await this.deps.prisma.redirect.findFirst({ where: { id, site_id } });
     if (!existing) {
-      throw AppError.notFound("Aturan redirect tidak ditemukan.");
+      throw AppError.notFound("Aturan pengalihan alamat tidak ditemukan.");
     }
     await this.deps.prisma.redirect.delete({ where: { id: existing.id } });
-    return { message: "Aturan redirect berhasil dihapus." };
+    return { message: "Aturan pengalihan alamat berhasil dihapus." };
   }
 
   /**

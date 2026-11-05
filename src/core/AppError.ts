@@ -36,7 +36,7 @@ export class AppError extends Error {
    */
   static unauthorized(
     code = "UNAUTHORIZED",
-    message = "Kredensial otentikasi tidak sah."
+    message = "Sesi login tidak valid. Silakan masuk kembali."
   ): AppError {
     return new AppError(401, code, message);
   }
@@ -47,7 +47,7 @@ export class AppError extends Error {
    */
   static forbidden(
     code = "FORBIDDEN",
-    message = "Anda tidak memiliki izin untuk mengakses sumber daya ini."
+    message = "Anda tidak punya akses ke bagian ini."
   ): AppError {
     return new AppError(403, code, message);
   }
@@ -88,7 +88,7 @@ export class AppError extends Error {
    * Produces an HTTP 500 error with a safe public message to avoid leaking internal stack traces.
    */
   static internal(
-    message = "Terjadi kesalahan sistem internal tak terduga."
+    message = "Ada gangguan di layanan kami. Coba lagi beberapa saat lagi."
   ): AppError {
     return new AppError(500, "INTERNAL_SERVER_ERROR", message);
   }
