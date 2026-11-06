@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANALYTICS_MAX_RANGE_DAYS,
   buildVisitorIdHash,
   getJakartaDateKey,
   isAllowedAnalyticsOrigin,
+  jakartaDateKeys,
   jakartaDateRange,
   resolveClientIp,
+  validateAnalyticsDateRange,
 } from "./analytics";
 
 const secret = "test-analytics-salt-secret-minimum-32-characters";
@@ -126,6 +129,66 @@ describe("jakartaDateRange", () => {
 
     expect(range.gte.toISOString()).toBe("2026-10-31T17:00:00.000Z");
     expect(range.lte.toISOString()).toBe("2026-11-02T16:59:59.999Z");
+  });
+});
+
+describe("jakartaDateKeys", () => {
+  it("keeps explicit valid bounds", () => {
+    expect(jakartaDateKeys("2026-11-01", "2026-11-02")).toEqual({
+      fromKey: "2026-11-01",
+      toKey: "2026-11-02",
+    });
+  });
+
+  it("falls back to a 30-day window ending at the explicit end date", () => {
+    expect(jakartaDateKeys(undefined, "2026-11-06")).toEqual({
+      fromKey: "2026-10-08",
+      toKey: "2026-11-06",
+    });
+  });
+});
+
+describe("validateAnalyticsDateRange", () => {
+  const now = new Date("2026-11-06T05:00:00.000Z");
+
+  it("accepts a normal range", () => {
+    expect(
+      validateAnalyticsDateRange("2026-10-01", "2026-10-31", now)
+    ).toBeNull();
+  });
+
+  it("accepts an omitted end date because it defaults to today", () => {
+    expect(validateAnalyticsDateRange("2026-11-01", undefined, now)).toBeNull();
+  });
+
+  it("rejects malformed or impossible dates", () => {
+    expect(validateAnalyticsDateRange("2026-13-01", "2026-11-06", now)).toBe(
+      "Tanggal awal tidak valid."
+    );
+    expect(validateAnalyticsDateRange("2026-02-30", "2026-03-01", now)).toBe(
+      "Tanggal awal tidak valid."
+    );
+    expect(validateAnalyticsDateRange("2026-11-01", "today", now)).toBe(
+      "Tanggal akhir tidak valid."
+    );
+  });
+
+  it("rejects reversed dates", () => {
+    expect(validateAnalyticsDateRange("2026-11-07", "2026-11-06", now)).toBe(
+      "Tanggal awal tidak boleh melewati tanggal akhir."
+    );
+  });
+
+  it("rejects a future end date", () => {
+    expect(validateAnalyticsDateRange("2026-11-01", "2026-11-07", now)).toBe(
+      "Tanggal akhir tidak boleh melewati hari ini."
+    );
+  });
+
+  it("rejects a range longer than the maximum", () => {
+    expect(
+      validateAnalyticsDateRange("2024-01-01", "2026-01-02", now)
+    ).toBe(`Rentang maksimal ${ANALYTICS_MAX_RANGE_DAYS} hari.`);
   });
 });
 

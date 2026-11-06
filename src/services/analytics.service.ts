@@ -220,9 +220,9 @@ export class AnalyticsService {
     >();
 
     const cursor = new Date(from);
-    cursor.setHours(0, 0, 0, 0);
+    cursor.setUTCHours(0, 0, 0, 0);
     const endCursor = new Date(to);
-    endCursor.setHours(23, 59, 59, 999);
+    endCursor.setUTCHours(23, 59, 59, 999);
 
     while (cursor <= endCursor) {
       const dateKey = cursor.toISOString().slice(0, 10);
@@ -233,7 +233,7 @@ export class AnalyticsService {
         sessions: 0,
         conversions: 0,
       });
-      cursor.setDate(cursor.getDate() + 1);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
 
     for (const r of records) {

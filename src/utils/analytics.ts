@@ -2,8 +2,10 @@ import crypto from "crypto";
 import { isIP } from "net";
 
 export const ANALYTICS_TIME_ZONE = "Asia/Jakarta";
+export const ANALYTICS_MAX_RANGE_DAYS = 366;
 const JAKARTA_OFFSET = "+07:00";
 const DEFAULT_RANGE_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface VisitorHashInput {
   secret: string;
@@ -16,6 +18,11 @@ export interface VisitorHashInput {
 export interface JakartaDateRange {
   gte: Date;
   lte: Date;
+}
+
+export interface JakartaDateKeys {
+  fromKey: string;
+  toKey: string;
 }
 
 export interface OriginCheckInput {
@@ -63,6 +70,68 @@ export function getJakartaDateKey(date: Date = new Date()): string {
 }
 
 /**
+ * Resolves the Jakarta calendar-day window. Missing bounds fall back to the
+ * last 30 days ending today so report endpoints keep their existing defaults.
+ */
+export function jakartaDateKeys(
+  fromDateStr?: string,
+  toDateStr?: string
+): JakartaDateKeys {
+  const toKey = isDateKey(toDateStr) ? toDateStr : getJakartaDateKey();
+  const fallbackFrom = getJakartaDateKey(
+    new Date(
+      new Date(`${toKey}T00:00:00.000${JAKARTA_OFFSET}`).getTime() -
+        (DEFAULT_RANGE_DAYS - 1) * DAY_MS
+    )
+  );
+  const fromKey = isDateKey(fromDateStr) ? fromDateStr : fallbackFrom;
+
+  return { fromKey, toKey };
+}
+
+/**
+ * Validates report date filters before they reach the aggregation queries.
+ * Returns a user-facing message, or `null` when the range is acceptable.
+ */
+export function validateAnalyticsDateRange(
+  fromDateStr?: string,
+  toDateStr?: string,
+  now: Date = new Date()
+): string | null {
+  if (fromDateStr !== undefined && !isDateKey(fromDateStr)) {
+    return "Tanggal awal tidak valid.";
+  }
+
+  if (toDateStr !== undefined && !isDateKey(toDateStr)) {
+    return "Tanggal akhir tidak valid.";
+  }
+
+  const { fromKey, toKey } = jakartaDateKeys(fromDateStr, toDateStr);
+  const fromTime = parseDateKey(fromKey);
+  const toTime = parseDateKey(toKey);
+  const todayTime = parseDateKey(getJakartaDateKey(now));
+
+  if (fromTime === null || toTime === null || todayTime === null) {
+    return "Rentang tanggal tidak valid.";
+  }
+
+  if (fromTime > toTime) {
+    return "Tanggal awal tidak boleh melewati tanggal akhir.";
+  }
+
+  if (toTime > todayTime) {
+    return "Tanggal akhir tidak boleh melewati hari ini.";
+  }
+
+  const days = Math.round((toTime - fromTime) / DAY_MS) + 1;
+  if (days > ANALYTICS_MAX_RANGE_DAYS) {
+    return `Rentang maksimal ${ANALYTICS_MAX_RANGE_DAYS} hari.`;
+  }
+
+  return null;
+}
+
+/**
  * Converts a Jakarta calendar-day window into absolute UTC timestamps so raw
  * event queries match the same days shown by the dashboard.
  */
@@ -70,14 +139,7 @@ export function jakartaDateRange(
   fromDateStr?: string,
   toDateStr?: string
 ): JakartaDateRange {
-  const toKey = isDateKey(toDateStr) ? toDateStr : getJakartaDateKey();
-  const fallbackFrom = getJakartaDateKey(
-    new Date(
-      new Date(`${toKey}T00:00:00.000${JAKARTA_OFFSET}`).getTime() -
-        (DEFAULT_RANGE_DAYS - 1) * 24 * 60 * 60 * 1000
-    )
-  );
-  const fromKey = isDateKey(fromDateStr) ? fromDateStr : fallbackFrom;
+  const { fromKey, toKey } = jakartaDateKeys(fromDateStr, toDateStr);
 
   return {
     gte: new Date(`${fromKey}T00:00:00.000${JAKARTA_OFFSET}`),
@@ -138,8 +200,26 @@ export function isAllowedAnalyticsOrigin(input: OriginCheckInput): boolean {
   return allowedHosts.has(parsed.host.toLowerCase());
 }
 
+function parseDateKey(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const parsed = new Date(timestamp);
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return timestamp;
+}
+
 function isDateKey(value?: string): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return typeof value === "string" && parseDateKey(value) !== null;
 }
 
 function headerValue(

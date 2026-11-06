@@ -2,7 +2,24 @@ import { Request, Response, NextFunction } from "express";
 import { AnalyticsService } from "../services/analytics.service";
 import { sendSuccess } from "../utils/response";
 import { defaultTenantGuard } from "../utils/optimistic";
+import { validateAnalyticsDateRange } from "../utils/analytics";
+import { AppError } from "../core/AppError";
 import { ITenantGuard } from "../container/types";
+
+function resolveDateRangeQuery(req: Request): {
+  from?: string;
+  to?: string;
+} {
+  const from = typeof req.query.from === "string" ? req.query.from : undefined;
+  const to = typeof req.query.to === "string" ? req.query.to : undefined;
+  const error = validateAnalyticsDateRange(from, to);
+
+  if (error) {
+    throw AppError.badRequest("INVALID_DATE_RANGE", error);
+  }
+
+  return { from, to };
+}
 
 /**
  * HTTP handlers for tenant-scoped traffic, conversion, and attribution analytics.
@@ -19,8 +36,7 @@ export class AnalyticsController {
   getOverview = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
-      const from = req.query.from as string | undefined;
-      const to = req.query.to as string | undefined;
+      const { from, to } = resolveDateRangeQuery(req);
 
       const result = await this.analyticsService.getOverview(site_id, from, to);
       return sendSuccess(res, result);
@@ -35,8 +51,7 @@ export class AnalyticsController {
   getPages = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
-      const from = req.query.from as string | undefined;
-      const to = req.query.to as string | undefined;
+      const { from, to } = resolveDateRangeQuery(req);
       const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 10, 1), 100);
 
       const result = await this.analyticsService.getPages(site_id, from, to, limit);
@@ -52,8 +67,7 @@ export class AnalyticsController {
   getSources = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
-      const from = req.query.from as string | undefined;
-      const to = req.query.to as string | undefined;
+      const { from, to } = resolveDateRangeQuery(req);
 
       const result = await this.analyticsService.getSources(site_id, from, to);
       return sendSuccess(res, result);
@@ -68,8 +82,7 @@ export class AnalyticsController {
   getDevices = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
-      const from = req.query.from as string | undefined;
-      const to = req.query.to as string | undefined;
+      const { from, to } = resolveDateRangeQuery(req);
 
       const result = await this.analyticsService.getDevices(site_id, from, to);
       return sendSuccess(res, result);
@@ -84,8 +97,7 @@ export class AnalyticsController {
   getAudience = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
-      const from = req.query.from as string | undefined;
-      const to = req.query.to as string | undefined;
+      const { from, to } = resolveDateRangeQuery(req);
 
       const result = await this.analyticsService.getAudience(site_id, from, to);
       return sendSuccess(res, result);
@@ -100,8 +112,7 @@ export class AnalyticsController {
   getContentClicks = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const site_id = this.tenantGuard.resolveAuthorizedSiteId(req.query.site_id);
-      const from = req.query.from as string | undefined;
-      const to = req.query.to as string | undefined;
+      const { from, to } = resolveDateRangeQuery(req);
       const limit = Math.min(
         Math.max(parseInt(req.query.limit as string, 10) || 10, 1),
         100
