@@ -85,6 +85,7 @@ model Site {
   projectSchedules   ProjectSchedule[]
   analyticsEvents    AnalyticsEvent[]
   analyticsDaily     AnalyticsDaily[]
+  analyticsHourly    AnalyticsHourly[]
   rateLimits         RateLimit[]
   emergencyAuditLogs EmergencyAuditLog[]
 
@@ -502,6 +503,24 @@ model AnalyticsDaily {
   @@unique([site_id, date, path, source, device])
   @@index([site_id, date])
   @@map("analytics_daily")
+}
+
+model AnalyticsHourly {
+  id          BigInt   @id @default(autoincrement())
+  site_id     String   @default("nextkarya-main") @db.VarChar(64)
+  date        DateTime @db.Date
+  hour        Int      @db.SmallInt
+  pageviews   Int      @default(0)
+  visitors    Int      @default(0)
+  sessions    Int      @default(0)
+  durationSec Int      @default(0)
+  conversions Int      @default(0)
+
+  site Site @relation(fields: [site_id], references: [id], onDelete: Cascade)
+
+  @@unique([site_id, date, hour])
+  @@index([site_id, date])
+  @@map("analytics_hourly")
 }
 
 model RateLimit {

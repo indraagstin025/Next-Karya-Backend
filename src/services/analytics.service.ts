@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../config/prisma";
 import { ITenantGuard } from "../container/types";
-import { jakartaDateRange } from "../utils/analytics";
+import { jakartaDateKeys, jakartaDateRange } from "../utils/analytics";
 import { defaultTenantGuard } from "../utils/optimistic";
 
 export interface AnalyticsServiceDeps {
@@ -250,15 +250,18 @@ export class AnalyticsService {
     const timeline = Array.from(timelineMap.values());
 
     // Aggregate device distribution
-    const deviceRecords = await this.deps.prisma.analyticsDaily.findMany({
-      where: {
-        site_id,
-        path: "*",
-        source: "all",
-        device: { not: "all" },
-        date: { gte: from, lte: to },
-      },
-    });
+    const [deviceRecords, hourly] = await Promise.all([
+      this.deps.prisma.analyticsDaily.findMany({
+        where: {
+          site_id,
+          path: "*",
+          source: "all",
+          device: { not: "all" },
+          date: { gte: from, lte: to },
+        },
+      }),
+      this.getHourly(site_id, fromDateStr, toDateStr),
+    ]);
 
     const deviceMap = new Map<string, { device: string; visitors: number }>();
     deviceMap.set("mobile", { device: "mobile", visitors: 0 });
@@ -320,7 +323,59 @@ export class AnalyticsService {
       },
       timeline,
       devices,
+      hourly,
     };
+  }
+
+  /**
+   * Returns a zero-filled 24-hour pattern for the selected Jakarta-day window.
+   * Buckets are summed across days, which is the shape the busy-hour chart needs.
+   */
+  async getHourly(
+    rawSiteId?: string,
+    fromDateStr?: string,
+    toDateStr?: string
+  ) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const { fromKey, toKey } = jakartaDateKeys(fromDateStr, toDateStr);
+
+    const records = await this.deps.prisma.analyticsHourly.findMany({
+      where: {
+        site_id,
+        date: {
+          gte: new Date(`${fromKey}T00:00:00.000Z`),
+          lte: new Date(`${toKey}T00:00:00.000Z`),
+        },
+      },
+      select: {
+        hour: true,
+        visitors: true,
+        sessions: true,
+        pageviews: true,
+        conversions: true,
+      },
+    });
+
+    const buckets = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      label: `${String(hour).padStart(2, "0")}:00`,
+      visitors: 0,
+      sessions: 0,
+      pageviews: 0,
+      conversions: 0,
+    }));
+
+    for (const row of records) {
+      const bucket = buckets[row.hour];
+      if (!bucket) continue;
+
+      bucket.visitors += row.visitors;
+      bucket.sessions += row.sessions;
+      bucket.pageviews += row.pageviews;
+      bucket.conversions += row.conversions;
+    }
+
+    return buckets;
   }
 
   /**

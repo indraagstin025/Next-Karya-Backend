@@ -238,6 +238,104 @@ export async function runAnalyticsRollup(
 }
 
 /**
+ * Recomputes hourly busy-hour rollups for the last `days` Jakarta calendar days.
+ *
+ * The bucket is `(Jakarta date, hour)`, so the dashboard can read a compact
+ * 24-row pattern without scanning raw events. Rebuilding the whole day keeps
+ * the job idempotent when late events arrive.
+ */
+export async function runHourlyAnalyticsRollup(
+  prisma: PrismaClient,
+  logger: ILogger,
+  days = 2
+): Promise<number> {
+  const startedAt = Date.now();
+  const safeDays = Math.max(1, Math.min(90, Math.trunc(days)));
+
+  const affected = await prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`
+        DELETE FROM analytics_hourly
+        WHERE "date" >= (
+          (CURRENT_TIMESTAMP AT TIME ZONE ${ANALYTICS_TIME_ZONE})::date
+          - (${safeDays - 1}::int)
+        )
+        AND "date" <= (CURRENT_TIMESTAMP AT TIME ZONE ${ANALYTICS_TIME_ZONE})::date;
+      `;
+
+      return tx.$executeRaw`
+        WITH recent AS (
+          SELECT
+            site_id,
+            DATE("occurredAt" AT TIME ZONE ${ANALYTICS_TIME_ZONE}) AS date_bucket,
+            EXTRACT(HOUR FROM ("occurredAt" AT TIME ZONE ${ANALYTICS_TIME_ZONE}))::int AS hour_bucket,
+            "sessionId",
+            "visitorIdHash",
+            "eventName",
+            "durationSec"
+          FROM analytics_events
+          WHERE "occurredAt" >= (
+            (
+              (CURRENT_TIMESTAMP AT TIME ZONE ${ANALYTICS_TIME_ZONE})::date
+              - (${safeDays - 1}::int)
+            )::timestamp AT TIME ZONE ${ANALYTICS_TIME_ZONE}
+          )
+        ),
+        hourly AS (
+          SELECT
+            site_id,
+            date_bucket,
+            hour_bucket,
+            COUNT(DISTINCT "visitorIdHash") AS visitors,
+            COUNT(DISTINCT "sessionId") AS sessions,
+            COUNT(*) FILTER (WHERE "eventName" = 'pageview') AS pageviews,
+            COALESCE(SUM("durationSec") FILTER (WHERE "eventName" = 'heartbeat'), 0) AS duration_sec,
+            COUNT(*) FILTER (WHERE "eventName" IN ('whatsapp_click', 'form_submit')) AS conversions
+          FROM recent
+          GROUP BY site_id, date_bucket, hour_bucket
+        )
+        INSERT INTO analytics_hourly (
+          site_id,
+          "date",
+          "hour",
+          visitors,
+          sessions,
+          pageviews,
+          "durationSec",
+          conversions
+        )
+        SELECT
+          site_id,
+          date_bucket,
+          hour_bucket,
+          visitors,
+          sessions,
+          pageviews,
+          duration_sec,
+          conversions
+        FROM hourly
+        ON CONFLICT (site_id, "date", "hour")
+        DO UPDATE SET
+          visitors = EXCLUDED.visitors,
+          sessions = EXCLUDED.sessions,
+          pageviews = EXCLUDED.pageviews,
+          "durationSec" = EXCLUDED."durationSec",
+          conversions = EXCLUDED.conversions;
+      `;
+    },
+    { maxWait: 10_000, timeout: 120_000 }
+  );
+
+  logger.info("[Cron] Hourly analytics rollup completed", {
+    days: safeDays,
+    affectedRows: affected,
+    durationMs: Date.now() - startedAt,
+  });
+
+  return affected;
+}
+
+/**
  * Deletes raw analytics events older than the retention window.
  */
 export async function purgeAnalyticsEvents(
@@ -260,8 +358,9 @@ export async function purgeAnalyticsEvents(
 }
 
 /**
- * Registers background cron schedules for hourly `analytics_daily` rollups
- * and daily 90-day raw `analytics_events` retention cleanup.
+ * Registers background cron schedules for hourly `analytics_daily` and
+ * `analytics_hourly` rollups, plus daily 90-day raw `analytics_events`
+ * retention cleanup.
  */
 export function initCronJobs(deps: Partial<CronDeps> = {}) {
   const prisma = deps.prisma ?? defaultPrisma;
@@ -275,6 +374,14 @@ export function initCronJobs(deps: Partial<CronDeps> = {}) {
       await runAnalyticsRollup(prisma, logger, 2);
     } catch (err: any) {
       logger.error("[Cron Error] Analytics rollup failed", { error: err?.message });
+    }
+
+    try {
+      await runHourlyAnalyticsRollup(prisma, logger, 2);
+    } catch (err: any) {
+      logger.error("[Cron Error] Hourly analytics rollup failed", {
+        error: err?.message,
+      });
     }
   });
 

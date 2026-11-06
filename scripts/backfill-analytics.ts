@@ -2,12 +2,13 @@ import path from "path";
 import dotenv from "dotenv";
 import { prisma } from "../src/config/prisma";
 import { logger } from "../src/core/logger";
-import { runAnalyticsRollup } from "../src/cron";
+import { runAnalyticsRollup, runHourlyAnalyticsRollup } from "../src/cron";
 
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 /**
- * Rebuilds `analytics_daily` for the last N calendar days from raw events.
+ * Rebuilds `analytics_daily` and `analytics_hourly` for the last N calendar
+ * days from raw events.
  * Usage: npm run analytics:backfill -- 90
  */
 async function main() {
@@ -24,7 +25,12 @@ async function main() {
 
   try {
     const affected = await runAnalyticsRollup(prisma, logger, days);
-    logger.info("[Backfill] Analytics rollup finished", { days, affectedRows: affected });
+    const hourlyAffected = await runHourlyAnalyticsRollup(prisma, logger, days);
+    logger.info("[Backfill] Analytics rollup finished", {
+      days,
+      affectedRows: affected,
+      hourlyRows: hourlyAffected,
+    });
   } catch (error) {
     logger.error("[Backfill] Analytics rollup failed", {
       error: error instanceof Error ? error.message : String(error),

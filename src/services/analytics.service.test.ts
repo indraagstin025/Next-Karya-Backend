@@ -32,13 +32,17 @@ function createService(rowsByCall: unknown[][]) {
     findMany.mockResolvedValueOnce(rows);
   }
 
-  const prisma = { analyticsDaily: { findMany } };
+  const hourlyFindMany = vi.fn().mockResolvedValue([]);
+  const prisma = {
+    analyticsDaily: { findMany },
+    analyticsHourly: { findMany: hourlyFindMany },
+  };
   const service = new AnalyticsService({
     prisma: prisma as never,
     tenantGuard: tenantGuard as never,
   });
 
-  return { service, findMany };
+  return { service, findMany, hourlyFindMany };
 }
 
 describe("AnalyticsService", () => {
@@ -90,6 +94,8 @@ describe("AnalyticsService", () => {
     expect(result.metrics.averageDurationSec).toBe(5);
     expect(result.metrics.bounceRate).toBe(25);
     expect(result.metrics.visitorsChange).toBe(25);
+    expect(result.hourly).toHaveLength(24);
+    expect(result.hourly[0]).toMatchObject({ hour: 0, visitors: 0 });
   });
 
   it("uses per-path rows for the page ranking", async () => {
@@ -126,6 +132,46 @@ describe("AnalyticsService", () => {
       source: "all",
       device: { not: "all" },
     });
+  });
+
+  it("builds a zero-filled 24-hour pattern from hourly rollups", async () => {
+    const { service, hourlyFindMany } = createService([[], [], []]);
+    hourlyFindMany.mockResolvedValue([
+      { hour: 9, visitors: 5, sessions: 6, pageviews: 12, conversions: 1 },
+      { hour: 14, visitors: 8, sessions: 9, pageviews: 20, conversions: 2 },
+    ]);
+
+    const result = await service.getHourly(
+      "nextkarya-main",
+      "2026-11-01",
+      "2026-11-02"
+    );
+
+    expect(result).toHaveLength(24);
+    expect(result[9]).toMatchObject({
+      hour: 9,
+      label: "09:00",
+      visitors: 5,
+      sessions: 6,
+      pageviews: 12,
+      conversions: 1,
+    });
+    expect(result[14]).toMatchObject({
+      visitors: 8,
+      sessions: 9,
+      pageviews: 20,
+      conversions: 2,
+    });
+    expect(result[0]).toMatchObject({
+      visitors: 0,
+      sessions: 0,
+      pageviews: 0,
+      conversions: 0,
+    });
+
+    const where = hourlyFindMany.mock.calls[0][0].where;
+    expect(where.date.gte.toISOString()).toBe("2026-11-01T00:00:00.000Z");
+    expect(where.date.lte.toISOString()).toBe("2026-11-02T00:00:00.000Z");
   });
 
   it("compares a single-day range against the previous day", async () => {
