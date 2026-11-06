@@ -1,9 +1,9 @@
 # Status Implementasi Dashboard Analitik & CMS (Berdasarkan Dokumentasi Kanonik)
 **Next Karya Digital Solutions**  
 *Laporan Audit Kesiapan Fitur Fase 1 (MVP) Berdasarkan Spesifikasi Kanonik di Folder docs/*  
-*Versi Dokumen: v1.0 Kanonik*  
+*Versi Dokumen: v1.2 (Batch 1 Analitik)*  
 *Tanggal Audit: 2 November 2026*  
-*Pembaruan Terakhir: 5 November 2026*  
+*Pembaruan Terakhir: 6 November 2026*  
 *Dokumen Rujukan: `analytics-v2.2.md`, `cms-v2.2.md`, `api-contracts-v1.0.md`, `schema-database-v1.1.md`, `architecture-desktop-vs-mobile-v1.1.md`*
 
 ---
@@ -18,6 +18,8 @@ Implementasi mencakup dua sisi sistem terintegrasi:
 
 Seluruh data dummy / mock telah dibersihkan secara menyeluruh. Sistem saat ini berjalan murni menggunakan data riil dari basis data atau menampilkan status kosong (*empty state*) yang informatif dan profesional saat belum ada rekaman data.
 
+Pada 6 November 2026, **Batch 1 perbaikan analitik** diselesaikan dan diterapkan ke produksi. Fokusnya adalah akurasi pengunjung dan sesi, validasi origin, breakdown browser/OS, klik layanan/portofolio, serta durasi baca dan porsi trafik pada Top Pages. Batch 2 yang masih tersisa hanya **rentang tanggal kustom** dan **pola jam sibuk**; **Site Selector dilewati** sehingga dashboard tetap berjalan single-site.
+
 ---
 
 ## 2. Status Implementasi: Dashboard Analitik (`analytics-v2.2.md`)
@@ -27,16 +29,16 @@ Berdasarkan spesifikasi pada dokumen `analytics-v2.2.md`, berikut adalah status 
 ### Pilar 1: Metrik Utama Trafik (Top-Line Overview) [STATUS: SELESAI]
 * **Pengunjung Harian Unik (Daily Unique Visitors):**
   - *Spesifikasi:* Estimasi perangkat unik per hari tanpa cookie pihak ketiga berbasis IP Hash.
-  - *Implementasi:* Dihitung melalui tabel `AnalyticsDaily` (`path = '*'`). Ditampilkan pada Kartu Statistik Pengunjung di [`StatisticsCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/StatisticsCard.tsx).
+  - *Implementasi:* Setiap event menyimpan `visitorIdHash` 64 karakter dari HMAC-SHA256 atas `site_id`, tanggal Jakarta, dan IP klien. Jika IP tidak tersedia, identitas jatuh ke sesi. Hash dibuat di `src/utils/analytics.ts`; IP mentah tidak disimpan. Rollup menghitung `COUNT(DISTINCT visitorIdHash)` sehingga dua sesi dari IP yang sama tetap dihitung satu pengunjung pada hari tersebut.
 * **Total Tayangan Halaman (Pageviews):**
   - *Spesifikasi:* Akumulasi pemuatan halaman publik.
   - *Implementasi:* Tersimpan dan teragregasi secara otomatis. Ditampilkan sebagai sub-informasi pada kartu pengunjung dan widget statistik konten.
 * **Sesi Kunjungan (Sessions):**
   - *Spesifikasi:* Sesi aktif dengan ambang batas kedaluwarsa 30 menit.
-  - *Implementasi:* Dihitung di backend dan diteruskan via endpoint `GET /api/v1/analytics/overview`.
+  - *Implementasi:* Sesi berputar setelah 30 menit tanpa aktivitas. Heartbeat hanya menghitung waktu saat tab terlihat, dikirim berkala, dan di-flush saat tab disembunyikan atau halaman ditutup. Jumlah sesi diteruskan via endpoint `GET /api/v1/analytics/overview`.
 * **Rata-rata Durasi Kunjungan (Average Visit Duration):**
   - *Spesifikasi:* Estimasi durasi interaksi tab aktif melalui sinyal detak *heartbeat*.
-  - *Implementasi:* Ditampilkan dalam format menit dan detik (`Xm Ys`) pada Kartu Statistik Waktu Kunjungan.
+  - *Implementasi:* Durasi heartbeat per halaman dijumlahkan pada rollup, lalu dibagi jumlah sesi halaman tersebut. Nilai ditampilkan dalam format menit dan detik (`Xm Ys`).
 * **Tingkat Pantulan (Bounce Rate %):**
   - *Spesifikasi:* Persentase kunjungan satu halaman tanpa interaksi lanjutan.
   - *Implementasi:* Dihitung otomatis dengan rumus `(bounces / sessions) * 100%` dan disajikan dengan presisi 1 desimal.
@@ -57,20 +59,31 @@ Berdasarkan spesifikasi pada dokumen `analytics-v2.2.md`, berikut adalah status 
 ### Pilar 3: Analisis Perilaku & Konten Populer (Content & Behavior) [STATUS: SELESAI]
 * **Halaman Terpopuler (Top Pages Table):**
   - *Spesifikasi:* Tabel peringkat URL publik teratas berdasarkan volume tayangan, persentase pantulan, dan konversi.
-  - *Implementasi:* Komponen [`TopPagesTable.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/TopPagesTable.tsx) menampilkan data peringkat dari `GET /api/v1/analytics/pages`. Dilengkapi pesan ramah jika belum ada kunjungan tercatat.
+  - *Implementasi:* [`TopPagesTable.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/TopPagesTable.tsx) menampilkan data dari `GET /api/v1/analytics/pages`. Setiap baris memuat tayangan, porsi trafik (`sharePercentage`), rata-rata durasi baca (`averageDurationSec`), pengunjung, pantulan, dan konversi. Porsi dihitung dari total tayangan seluruh halaman pada rentang aktif, sedangkan rata-rata durasi berasal dari akumulasi `durationSec` heartbeat dibagi jumlah sesi halaman. Tabel menampilkan pesan kosong bila belum ada kunjungan.
+* **Klik Layanan & Portofolio (Content Clicks):**
+  - *Spesifikasi:* Mengetahui layanan dan portofolio yang paling sering dibuka pengunjung.
+  - *Implementasi:* [`AnalyticsTracker.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/components/AnalyticsTracker.tsx) memeriksa klik tautan internal ke `/layanan` atau `/portofolio`, lalu mengirim event `service_click` atau `portfolio_click` beserta `targetPath`. Backend menyimpan `targetPath` pada `AnalyticsEvent` dan mengagregasikannya di `GET /api/v1/analytics/content-clicks`. Hasilnya tampil di [`ContentClicksCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/ContentClicksCard.tsx). Rincian ini dibatasi retensi event mentah 90 hari.
 * **Saluran Rujukan Trafik (Traffic Sources & Referrers):**
   - *Spesifikasi:* Pengelompokan saluran asal pengunjung (Pencarian Organik Google, Media Sosial Instagram, Langsung / Direct, Tautan Mitra / Referral).
   - *Implementasi:* Ditampilkan melalui Donut Chart dan Bar Chart interaktif di [`SalesMetricsCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/SalesMetricsCard.tsx) yang bersumber dari `GET /api/v1/analytics/sources`.
 
 ### Pilar 4: Demografi & Spesifikasi Teknologi [STATUS: SELESAI FASE 1]
 * **Proporsi Tipe Perangkat (Mobile, Desktop, Tablet):**
-  - *Implementasi:* Didukung pada kolom `device` tabel `AnalyticsDaily` dan skrip pendeteksi di [`analytics-beacon.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/lib/analytics-beacon.ts).
+  - *Implementasi:* `detectDevice()` di [`analytics-beacon.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/lib/analytics-beacon.ts) mengelompokkan lebar layar menjadi mobile (di bawah 768 px), tablet (768 sampai 1023 px), dan desktop (1024 px ke atas). Rollup menyimpan agregat per perangkat di `AnalyticsDaily`.
+* **Browser dan Sistem Operasi:**
+  - *Implementasi:* [`analytics-core.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/lib/analytics-core.ts) membaca user agent dan mengelompokkan browser (Chrome, Safari, Firefox, Edge, Opera, Samsung Internet, Lainnya) serta sistem operasi (Windows, Android, iOS, macOS, ChromeOS, Linux, Lainnya). Nilai disimpan pada `AnalyticsEvent.browser` dan `AnalyticsEvent.os`, lalu diringkas di `GET /api/v1/analytics/audience` dan ditampilkan di [`AudienceBreakdownCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/AudienceBreakdownCard.tsx). Data historis sebelum 6 November 2026 tampil sebagai "Tidak diketahui" karena kolomnya baru terisi setelah deploy.
 * **Sebaran Wilayah Geografis (GeoIP) & Pelacakan UTM Detail:**
   - *Status:* Dijadwalkan untuk **Fase 2** sesuai matriks Bab 4 dokumen `analytics-v2.2.md`.
 
-### Pilar 5: Visualisasi Data, Filter Waktu & Kontrol Tampilan [STATUS: SELESAI]
-* **Filter Rentang Waktu Mandiri:**
-  - *Implementasi:* Tombol selektor 3 opsi (`Hari Ini`, `7 Hari`, `30 Hari`) di header Dashboard. Memperbarui grafik secara reaktif tanpa perlu memuat ulang seluruh halaman peramban.
+### Pilar 5: Visualisasi Data, Filter Waktu & Kontrol Tampilan [STATUS: SELESAI SEBAGIAN]
+* **Filter Rentang Waktu Cepat:**
+  - *Implementasi:* Tombol `Hari Ini`, `7 Hari`, dan `30 Hari` di header Dashboard. Rentang dihitung dalam zona waktu `Asia/Jakarta` dan memperbarui grafik tanpa memuat ulang seluruh halaman.
+* **Rentang Tanggal Kustom (Batch 2):**
+  - *Status:* **BELUM DIIMPLEMENTASIKAN.** Pemilih tanggal awal dan akhir, validasi urutan rentang, dan batas rentang maksimum akan ditambahkan pada Batch 2. API sudah menerima parameter `from` dan `to` berformat `YYYY-MM-DD`, sehingga perubahan utama ada pada state filter dan kontrol antarmuka.
+* **Site Selector:**
+  - *Status:* **DILEWATI** berdasarkan keputusan pemilik produk pada 6 November 2026. Dashboard berjalan single-site (`nextkarya-main`). Komponen pemilih situs hanya dirender bila daftar situs berisi lebih dari satu entri, sehingga tidak tampil pada konfigurasi saat ini.
+* **Pola Jam Sibuk (Hourly Busy Pattern, Batch 2):**
+  - *Status:* **BELUM DIIMPLEMENTASIKAN.** Rollup dashboard masih menyimpan granularitas harian. Batch 2 akan menambahkan agregasi per jam dan grafik pola jam sibuk.
 * **Judul & Tata Letak Bersih:**
   - *Implementasi:* Header utama disetel ke **"Dashboard"**. Tombol cepat *"Tulis Artikel"* dan *"Tambah Portofolio"* telah ditiadakan agar antarmuka fokus pada indikator kinerja operasional.
 * **Ekspor Laporan (CSV / Excel):**
@@ -143,11 +156,19 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
 | **Analitik** | Multi-Tenancy Dasar (`site_id`) | `analytics-v2.2.md` §1.1 | **SELESAI** | Seluruh event terikat ke `site_id: "nextkarya-main"` |
 | **Analitik** | Pelacak Sinyal Ringan (< 2 KB) | `analytics-v2.2.md` §3.1 | **SELESAI** | Non-blocking via `navigator.sendBeacon` |
 | **Analitik** | Rate Limiting Telemetri (60 req/min) | `analytics-v2.2.md` §3.2 | **SELESAI** | Mencegah banjir spam bot pada endpoint event |
+| **Analitik** | Identitas Pengunjung Harian (IP Hash) | `analytics-v2.2.md` §3.1 | **SELESAI** | HMAC-SHA256 harian, IP mentah tidak disimpan |
+| **Analitik** | Sesi 30 Menit & Heartbeat Tab Aktif | `analytics-v2.2.md` §2 (Pilar 1) | **SELESAI** | Durasi hanya dihitung saat tab terlihat |
+| **Analitik** | Validasi Origin Telemetri | `analytics-v2.2.md` §3.2 | **SELESAI** | BFF dan backend menolak origin asing dengan `403` |
 | **Analitik** | Metrik Top-Line (Views, Visitors, Bounces) | `analytics-v2.2.md` §2 (Pilar 1) | **SELESAI** | Tampil riil dari basis data tanpa data dummy |
 | **Analitik** | Pelacakan Konversi WhatsApp & Form | `analytics-v2.2.md` §2 (Pilar 2) | **SELESAI** | Menghitung rasio konversi riil calon klien |
-| **Analitik** | Tabel Halaman Populer (*Top Pages*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI** | Peringkat URL tayangan, pantulan, dan prospek |
+| **Analitik** | Tabel Halaman Populer (*Top Pages*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI** | Peringkat URL dengan tayangan, porsi trafik, durasi baca, pantulan, dan konversi |
+| **Analitik** | Klik Layanan & Portofolio | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI** | Event `service_click` dan `portfolio_click` menyimpan `targetPath` |
 | **Analitik** | Saluran Rujukan (*Traffic Sources*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI** | Donut Chart & Bar Chart Google, Sosmed, Direct |
-| **Analitik** | Filter Waktu Mandiri (Hari Ini, 7d, 30d) | `analytics-v2.2.md` §2 (Pilar 5) | **SELESAI** | Berjalan di peramban staf tanpa bentrok sesi |
+| **Analitik** | Browser & Sistem Operasi | `analytics-v2.2.md` §2 (Pilar 4) | **SELESAI** | Parsing user agent di klien; data mentah 90 hari |
+| **Analitik** | Filter Waktu Cepat (Hari Ini, 7d, 30d) | `analytics-v2.2.md` §2 (Pilar 5) | **SELESAI** | Berjalan di peramban staf tanpa bentrok sesi |
+| **Analitik** | Rentang Tanggal Kustom (*Custom Date Range*) | `analytics-v2.2.md` §2 (Pilar 5) | **BATCH 2** | API sudah menerima `from` dan `to`; kontrol UI belum ada |
+| **Analitik** | Pola Jam Sibuk (*Hourly Busy Pattern*) | `analytics-v2.2.md` §2 (Pilar 5) | **BATCH 2** | Rollup masih harian; agregasi per jam belum dibuat |
+| **Analitik** | Pemilih Situs (*Site Selector*) | `analytics-v2.2.md` §2 (Pilar 5) | **DILEWATI** | Dashboard single-site `nextkarya-main`; komponen hanya muncul bila ada lebih dari satu situs |
 | **Analitik** | Ekspor Laporan CSV / Excel | `analytics-v2.2.md` §4 (#13) | **FASE 2** | Dialokasikan untuk pelaporan manajemen lanjutan |
 | **Analitik** | Pemetaan Wilayah GeoIP & UTM Detail | `analytics-v2.2.md` §4 (#11-12) | **FASE 2** | Dialokasikan untuk kampanye berbayar lanjutan |
 | **Analitik** | Portal Mandiri Khusus Akun Klien | `analytics-v2.2.md` §4 (#14) | **FASE 2** | Pembukaan akses klien luar di masa depan |
@@ -169,12 +190,17 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
 
 ### Sisi Backend Engine (`backend/`)
 * **Skema & Konfigurasi Basis Data:**
-  - [`prisma/schema.prisma`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/prisma/schema.prisma) : Pemodelan 20 tabel entitas lengkap.
+  - [`prisma/schema.prisma`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/prisma/schema.prisma) : Pemodelan 20 tabel entitas lengkap, termasuk `AnalyticsEvent.targetPath`, `browser`, dan `os`.
+  - [`prisma/migrations/20261106000000_add_analytics_target_path/migration.sql`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/prisma/migrations/20261106000000_add_analytics_target_path/migration.sql) : Migrasi kolom `targetPath` yang sudah diterapkan di produksi.
   - [`src/config/prisma.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/config/prisma.ts) : Singleton koneksi basis data.
 * **Layanan Analitik & Telemetri:**
-  - [`src/services/analytics.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/analytics.service.ts) : Agregasi metrik, ranking halaman, saluran rujukan, dan komparasi periode riil.
-  - [`src/controllers/analytics.controller.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/controllers/analytics.controller.ts) : Handler HTTP untuk overview, pages, dan sources.
+  - [`src/services/analytics.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/analytics.service.ts) : Agregasi metrik, ranking halaman dengan durasi dan porsi, saluran rujukan, audiens browser/OS, klik konten, dan komparasi periode.
+  - [`src/controllers/analytics.controller.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/controllers/analytics.controller.ts) : Handler HTTP untuk overview, pages, sources, devices, audience, dan content-clicks.
   - [`src/routes/v1/analytics.routes.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/routes/v1/analytics.routes.ts) : Rute endpoint analitik berotorisasi.
+  - [`src/services/public.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/public.service.ts) : Penerimaan beacon, validasi origin, dan penyimpanan identitas pengunjung.
+  - [`src/utils/analytics.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/utils/analytics.ts) : Hash pengunjung harian, rentang tanggal Jakarta, pembacaan IP klien, dan validasi origin.
+  - [`src/validators/public.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/validators/public.ts) : Skema event analitik, termasuk `heartbeat`, `targetPath`, dan batas durasi.
+  - [`src/cron/index.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/cron/index.ts) : Rollup empat granularitas, agregasi durasi heartbeat, dan pembersihan event mentah 90 hari.
 * **Layanan CMS & Penanganan Konten:**
   - [`src/services/cms.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/cms.service.ts) : Logika bisnis artikel, portofolio, layanan, halaman, dan snapshot otomatis.
   - [`src/services/emergency.service.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/backend/src/services/emergency.service.ts) : Operasi toolkit darurat dan audit log.
@@ -186,13 +212,16 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
   - [`src/features/dashboard/hooks/useDashboard.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/hooks/useDashboard.ts) : Manajemen state filter peramban mandiri.
   - [`src/features/dashboard/components/StatisticsCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/StatisticsCard.tsx) : Kartu metrik trafik utama.
   - [`src/features/dashboard/components/SalesMetricsCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/SalesMetricsCard.tsx) : Diagram saluran rujukan dan respon konversi.
-  - [`src/features/dashboard/components/TopPagesTable.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/TopPagesTable.tsx) : Tabel peringkat halaman terpopuler.
+  - [`src/features/dashboard/components/TopPagesTable.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/TopPagesTable.tsx) : Tabel peringkat halaman dengan tayangan, porsi, durasi baca, pantulan, dan konversi.
+  - [`src/features/dashboard/components/ContentClicksCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/ContentClicksCard.tsx) : Peringkat klik layanan dan portofolio.
+  - [`src/features/dashboard/components/AudienceBreakdownCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/AudienceBreakdownCard.tsx) : Distribusi browser dan sistem operasi.
   - [`src/features/dashboard/components/TotalEarningCard.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/TotalEarningCard.tsx) : Estimasi nilai proyek disepakati.
   - [`src/features/dashboard/components/DashboardTransactionTable.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/dashboard/components/DashboardTransactionTable.tsx) : Tabel permohonan konsultasi masuk.
 * **Telemetri & Penjejakan Publik:**
-  - [`src/lib/analytics-beacon.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/lib/analytics-beacon.ts) : Skrip transmisi sinyal pelacak ringan (< 2 KB).
-  - [`src/components/AnalyticsTracker.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/components/AnalyticsTracker.tsx) : Penjejakan rute publik dan klik WhatsApp.
-  - [`src/app/api/analytics/event/route.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/app/api/analytics/event/route.ts) : Proksi telemetri non-blocking ke backend API.
+  - [`src/lib/analytics-core.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/lib/analytics-core.ts) : Rotasi sesi 30 menit, deteksi browser/OS, klasifikasi klik layanan/portofolio, dan validasi origin.
+  - [`src/lib/analytics-beacon.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/lib/analytics-beacon.ts) : Perakitan payload beacon, deteksi perangkat dan sumber trafik, serta pengiriman non-blocking.
+  - [`src/components/AnalyticsTracker.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/components/AnalyticsTracker.tsx) : Penjejakan rute publik, heartbeat tab aktif, klik WhatsApp, dan klik layanan/portofolio.
+  - [`src/app/api/analytics/event/route.ts`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/app/api/analytics/event/route.ts) : Proksi telemetri dengan validasi origin dan penerusan IP klien.
 * **Panel Kerja CMS Terpadu:**
   - [`src/features/cms/CmsWorkspace.tsx`](file:///C:/Users/Indra/Documents/Documents/Proyek-NEXT-KARYA/frontend/src/features/cms/CmsWorkspace.tsx) : Pengendali tab kerja staf internal terpusat.
 
@@ -253,10 +282,36 @@ Audit lanjutan menemukan beberapa cacat implementasi yang membuat sebagian fitur
 - **Ketahanan sesi dashboard:** sesi kedaluwarsa diarahkan ke `/?sesi=berakhir` dan modal login terbuka dengan penjelasan. Kegagalan sementara `/auth/me` menampilkan halaman "Dashboard belum bisa dimuat" dengan tombol coba lagi, bukan mengalihkan staf ke beranda. Kegagalan muat data di sisi klien menampilkan banner dengan tombol coba lagi.
 - **Uji publikasi end-to-end:** artikel uji dibuat sebagai draf lewat CMS API, lalu dipublikasikan. Artikel muncul di `/blog` dalam 2 detik tanpa revalidasi manual dan halaman detailnya merespons 200. Setelah artikel uji dihapus, cache direvalidasi dan `/blog` kembali bersih sementara artikel kanonik tetap tampil.
 
-### 6.8 Batasan yang masih tersisa
+### 6.8 Batch 1 Analitik (6 November 2026)
+
+Batch 1 menutup celah akurasi data dan menambah rincian perilaku yang sebelumnya belum tersedia:
+
+- **Identitas pengunjung harian:** setiap event menyimpan `visitorIdHash`, yaitu HMAC-SHA256 dari `site_id`, tanggal Jakarta, dan IP klien. IP mentah tidak masuk basis data. Bila IP tidak tersedia, identitas memakai `sessionId`. Rollup menghitung `COUNT(DISTINCT visitorIdHash)` per hari.
+- **Sesi dan durasi:** sesi berputar setelah 30 menit tanpa aktivitas. Heartbeat 15 detik hanya menambah waktu saat tab terlihat, lalu di-flush setiap 30 detik atau saat tab disembunyikan dan halaman ditutup. Event dengan durasi di bawah 3 detik tidak dikirim.
+- **Validasi origin:** BFF Next.js dan backend menolak `Origin` atau `Referer` yang tidak cocok dengan host request atau daftar origin yang diizinkan. Permintaan tanpa header origin tetap diterima untuk webview aplikasi seluler.
+- **Browser dan OS:** parsing user agent dilakukan di klien. Hasilnya disimpan di `AnalyticsEvent.browser` dan `AnalyticsEvent.os`, lalu diagregasikan oleh `GET /api/v1/analytics/audience`.
+- **Klik layanan dan portofolio:** klik tautan internal ke `/layanan` dan `/portofolio` mengirim `service_click` atau `portfolio_click` dengan `targetPath`. Backend memvalidasi `targetPath` dan menyimpannya untuk laporan `GET /api/v1/analytics/content-clicks`.
+- **Top Pages:** endpoint `GET /api/v1/analytics/pages` kini mengembalikan `averageDurationSec` dan `sharePercentage` di samping metrik lama. Keduanya ditampilkan pada tabel Halaman Terpopuler.
+- **Retensi:** rollup berjalan setiap jam untuk dua hari terakhir. Event mentah dihapus setelah 90 hari, sehingga rincian browser, OS, dan klik konten mengikuti batas tersebut.
+
+### 6.9 Verifikasi Batch 1
+
+- **Test otomatis:** backend lulus 58 dari 58 test dan frontend lulus 40 dari 40 test. Kedua proyek juga lulus build produksi.
+- **Migrasi produksi:** `20261106000000_add_analytics_target_path` diterapkan pada 6 November 2026 pukul 11:21:20 UTC dan tercatat di `_prisma_migrations`.
+- **Validasi origin:** permintaan BFF dari origin asing menghasilkan `403`; origin yang diizinkan menghasilkan `200`. Backend juga menolak origin asing dengan `403`.
+- **Penyimpanan event:** event uji tersimpan dengan browser Chrome, OS Windows, dan `targetPath` yang benar. Endpoint pages, audience, dan content-clicks merespons `200`. Health check merespons `200` dan tidak ada error pada log kontainer.
+- **Pembersihan data:** data sintetis dari pengujian dihapus sampai jumlahnya `0`.
+
+### 6.10 Batasan yang masih tersisa dan sisa Batch 2
+
 - Backfill analitik perlu dijalankan sekali setelah deploy agar data historis terisi dan bucket Jakarta konsisten.
 - Pengujian rollup dilakukan terhadap database pembangunan; belum ada test integrasi otomatis dengan PostgreSQL.
 - Cron masih berjalan in-process; deployment multi-instance perlu memindahkannya ke worker.
+- Halaman yang tercatat sebelum 6 November 2026 tidak memiliki browser dan OS, sehingga tampil sebagai "Tidak diketahui" sampai ada kunjungan baru.
+- Rincian browser, OS, dan klik layanan/portofolio hanya tersedia selama 90 hari karena event mentah dihapus setelah periode itu.
+- Identitas pengunjung berbasis IP harian dapat menggabungkan beberapa pengunjung di balik NAT yang sama dan memisahkan satu pengunjung yang berganti IP.
+- **Batch 2 yang tersisa:** rentang tanggal kustom dan pola jam sibuk.
+- **Site Selector dilewati** atas keputusan pemilik produk; dashboard tetap single-site.
 - Dokumen ini tidak mengklaim seluruh fitur Fase 2 selesai.
 
 ---
@@ -264,6 +319,6 @@ Audit lanjutan menemukan beberapa cacat implementasi yang membuat sebagian fitur
 ## 7. Kesimpulan Hasil Audit
 
 Berdasarkan seluruh kriteria pada dokumen kanonik di direktori `backend/docs/`:
-1. **Dashboard Analitik Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6, mencakup penjejakan sinyal publik non-blocking, agregasi metrik di PostgreSQL, filter rentang waktu mandiri per staf, visualisasi grafik interaktif, dan pembersihan total dari data tiruan.
+1. **Dashboard Analitik Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6. Batch 1 analitik sudah live di produksi dengan identitas pengunjung harian, sesi heartbeat, validasi origin, breakdown browser/OS, klik layanan/portofolio, serta durasi dan porsi trafik pada Top Pages. Rentang tanggal kustom dan pola jam sibuk masih tersisa di Batch 2, sementara Site Selector dilewati.
 2. **Sistem CMS Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6, mencakup manajemen konten multi-entitas berpartisi `site_id`, perlindungan auto-snapshot 5 versi rolling FIFO, pengamanan konflik editan via Optimistic Locking, alur soft delete arsip, dan toolkit darurat.
 3. Seluruh fitur **Fase 2** (seperti penjadwalan terbit otomatis, ekspor file CSV/Excel, pemetaan GeoIP kota, dan portal mandiri akun klien) telah terdokumentasi rapi pada batas lingkup rilis berikutnya tanpa mengganggu stabilitas operasional sistem saat ini.
