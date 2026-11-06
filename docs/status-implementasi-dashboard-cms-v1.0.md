@@ -1,7 +1,7 @@
 # Status Implementasi Dashboard Analitik & CMS (Berdasarkan Dokumentasi Kanonik)
 **Next Karya Digital Solutions**  
 *Laporan Audit Kesiapan Fitur Fase 1 (MVP) Berdasarkan Spesifikasi Kanonik di Folder docs/*  
-*Versi Dokumen: v1.2 (Batch 1 Analitik)*  
+*Versi Dokumen: v1.3 (Batch 1 & 2 Analitik)*  
 *Tanggal Audit: 2 November 2026*  
 *Pembaruan Terakhir: 6 November 2026*  
 *Dokumen Rujukan: `analytics-v2.2.md`, `cms-v2.2.md`, `api-contracts-v1.0.md`, `schema-database-v1.1.md`, `architecture-desktop-vs-mobile-v1.1.md`*
@@ -18,7 +18,7 @@ Implementasi mencakup dua sisi sistem terintegrasi:
 
 Seluruh data dummy / mock telah dibersihkan secara menyeluruh. Sistem saat ini berjalan murni menggunakan data riil dari basis data atau menampilkan status kosong (*empty state*) yang informatif dan profesional saat belum ada rekaman data.
 
-Pada 6 November 2026, **Batch 1 perbaikan analitik** diselesaikan dan diterapkan ke produksi. Fokusnya adalah akurasi pengunjung dan sesi, validasi origin, breakdown browser/OS, klik layanan/portofolio, serta durasi baca dan porsi trafik pada Top Pages. Batch 2 yang masih tersisa hanya **rentang tanggal kustom** dan **pola jam sibuk**; **Site Selector dilewati** sehingga dashboard tetap berjalan single-site.
+Pada 6 November 2026, **Batch 1 dan Batch 2 perbaikan analitik** diselesaikan dan diterapkan ke produksi. Batch 1 mencakup akurasi pengunjung dan sesi, validasi origin, breakdown browser/OS, klik layanan/portofolio, serta durasi baca dan porsi trafik pada Top Pages. Batch 2 menambahkan **rentang tanggal kustom** dan **pola jam sibuk**. **Site Selector dilewati** sehingga dashboard tetap berjalan single-site.
 
 ---
 
@@ -75,15 +75,15 @@ Berdasarkan spesifikasi pada dokumen `analytics-v2.2.md`, berikut adalah status 
 * **Sebaran Wilayah Geografis (GeoIP) & Pelacakan UTM Detail:**
   - *Status:* Dijadwalkan untuk **Fase 2** sesuai matriks Bab 4 dokumen `analytics-v2.2.md`.
 
-### Pilar 5: Visualisasi Data, Filter Waktu & Kontrol Tampilan [STATUS: SELESAI SEBAGIAN]
+### Pilar 5: Visualisasi Data, Filter Waktu & Kontrol Tampilan [STATUS: SELESAI]
 * **Filter Rentang Waktu Cepat:**
   - *Implementasi:* Tombol `Hari Ini`, `7 Hari`, dan `30 Hari` di header Dashboard. Rentang dihitung dalam zona waktu `Asia/Jakarta` dan memperbarui grafik tanpa memuat ulang seluruh halaman.
 * **Rentang Tanggal Kustom (Batch 2):**
-  - *Status:* **BELUM DIIMPLEMENTASIKAN.** Pemilih tanggal awal dan akhir, validasi urutan rentang, dan batas rentang maksimum akan ditambahkan pada Batch 2. API sudah menerima parameter `from` dan `to` berformat `YYYY-MM-DD`, sehingga perubahan utama ada pada state filter dan kontrol antarmuka.
+  - *Status:* **SELESAI.** Tombol `Kustom` membuka popover berisi input tanggal awal dan akhir, sementara preset `Hari Ini`, `7 Hari`, dan `30 Hari` tetap tersedia. Rentang divalidasi di klien dan backend: maksimal 366 hari, tanggal akhir tidak boleh melewati hari ini, tanggal awal tidak boleh melewati tanggal akhir, dan format tanggal harus valid. Jika rentang melewati 90 hari, popover menampilkan catatan bahwa rincian browser, OS, dan klik konten hanya tersedia untuk 90 hari terakhir.
 * **Site Selector:**
   - *Status:* **DILEWATI** berdasarkan keputusan pemilik produk pada 6 November 2026. Dashboard berjalan single-site (`nextkarya-main`). Komponen pemilih situs hanya dirender bila daftar situs berisi lebih dari satu entri, sehingga tidak tampil pada konfigurasi saat ini.
 * **Pola Jam Sibuk (Hourly Busy Pattern, Batch 2):**
-  - *Status:* **BELUM DIIMPLEMENTASIKAN.** Rollup dashboard masih menyimpan granularitas harian. Batch 2 akan menambahkan agregasi per jam dan grafik pola jam sibuk.
+  - *Status:* **SELESAI.** Tabel `AnalyticsHourly` menyimpan rollup `(site_id, date, hour)` berisi pengunjung, sesi, tayangan, durasi, dan konversi. Cron mengisi dua hari terakhir setiap jam, sedangkan `npm run analytics:backfill -- 90` mengisi data historis. `GET /api/v1/analytics/overview` mengembalikan larik `hourly` 24 jam yang selalu terisi nol, lalu `HourlyPatternChart` menampilkannya di samping tren harian. Nilai pengunjung per jam adalah penjumlahan bucket pengunjung harian, bukan pengunjung unik lintas rentang; karena itu grafik memakai tayangan halaman sebagai ukuran utama.
 * **Judul & Tata Letak Bersih:**
   - *Implementasi:* Header utama disetel ke **"Dashboard"**. Tombol cepat *"Tulis Artikel"* dan *"Tambah Portofolio"* telah ditiadakan agar antarmuka fokus pada indikator kinerja operasional.
 * **Ekspor Laporan (CSV / Excel):**
@@ -166,8 +166,8 @@ Berdasarkan spesifikasi pada dokumen `cms-v2.2.md`, berikut adalah status implem
 | **Analitik** | Saluran Rujukan (*Traffic Sources*) | `analytics-v2.2.md` §2 (Pilar 3) | **SELESAI** | Donut Chart & Bar Chart Google, Sosmed, Direct |
 | **Analitik** | Browser & Sistem Operasi | `analytics-v2.2.md` §2 (Pilar 4) | **SELESAI** | Parsing user agent di klien; data mentah 90 hari |
 | **Analitik** | Filter Waktu Cepat (Hari Ini, 7d, 30d) | `analytics-v2.2.md` §2 (Pilar 5) | **SELESAI** | Berjalan di peramban staf tanpa bentrok sesi |
-| **Analitik** | Rentang Tanggal Kustom (*Custom Date Range*) | `analytics-v2.2.md` §2 (Pilar 5) | **BATCH 2** | API sudah menerima `from` dan `to`; kontrol UI belum ada |
-| **Analitik** | Pola Jam Sibuk (*Hourly Busy Pattern*) | `analytics-v2.2.md` §2 (Pilar 5) | **BATCH 2** | Rollup masih harian; agregasi per jam belum dibuat |
+| **Analitik** | Rentang Tanggal Kustom (*Custom Date Range*) | `analytics-v2.2.md` §2 (Pilar 5) | **SELESAI** | Popover tanggal, preset cepat, validasi 366 hari dan tanggal masa depan di klien + backend |
+| **Analitik** | Pola Jam Sibuk (*Hourly Busy Pattern*) | `analytics-v2.2.md` §2 (Pilar 5) | **SELESAI** | Rollup `AnalyticsHourly` per `(tanggal, jam)`; overview mengembalikan 24 bucket |
 | **Analitik** | Pemilih Situs (*Site Selector*) | `analytics-v2.2.md` §2 (Pilar 5) | **DILEWATI** | Dashboard single-site `nextkarya-main`; komponen hanya muncul bila ada lebih dari satu situs |
 | **Analitik** | Ekspor Laporan CSV / Excel | `analytics-v2.2.md` §4 (#13) | **FASE 2** | Dialokasikan untuk pelaporan manajemen lanjutan |
 | **Analitik** | Pemetaan Wilayah GeoIP & UTM Detail | `analytics-v2.2.md` §4 (#11-12) | **FASE 2** | Dialokasikan untuk kampanye berbayar lanjutan |
@@ -259,7 +259,7 @@ Audit lanjutan menemukan beberapa cacat implementasi yang membuat sebagian fitur
 ### 6.5 Test
 - Vitest ditambahkan di backend dan frontend.
 - Cakupan: agregasi analitik, validator CRM, hapus jadwal, schema kontak, dan validator publik.
-- Jumlah test saat ini: 14 backend dan 10 frontend.
+- Jumlah test pada tahap awal: 14 backend dan 10 frontend.
 
 ### 6.6 Perbaikan lanjutan (2 November 2026)
 - Dashboard memakai `Lead.dealValue` asli untuk kartu estimasi nilai dan tabel prospek. Nominal karangan, metode pembayaran palsu, dan persentase tren buatan dihapus.
@@ -302,15 +302,33 @@ Batch 1 menutup celah akurasi data dan menambah rincian perilaku yang sebelumnya
 - **Penyimpanan event:** event uji tersimpan dengan browser Chrome, OS Windows, dan `targetPath` yang benar. Endpoint pages, audience, dan content-clicks merespons `200`. Health check merespons `200` dan tidak ada error pada log kontainer.
 - **Pembersihan data:** data sintetis dari pengujian dihapus sampai jumlahnya `0`.
 
-### 6.10 Batasan yang masih tersisa dan sisa Batch 2
+### 6.10 Batch 2 Analitik (6 November 2026)
 
-- Backfill analitik perlu dijalankan sekali setelah deploy agar data historis terisi dan bucket Jakarta konsisten.
+Batch 2 melengkapi filter waktu dan granularitas visualisasi:
+
+- **Rentang tanggal kustom:** kontrol `Kustom` memakai input tanggal native di popover. Batas 366 hari, penolakan tanggal masa depan, dan urutan tanggal divalidasi di `date-range.ts` serta `validateAnalyticsDateRange()` pada backend. Endpoint laporan menolak rentang tidak valid dengan `400 INVALID_DATE_RANGE`.
+- **Pola jam sibuk:** tabel `AnalyticsHourly` menyimpan agregat `(site_id, date, hour)` untuk pengunjung, sesi, tayangan, durasi, dan konversi. `runHourlyAnalyticsRollup()` dijalankan setiap jam untuk dua hari terakhir dan turut dijalankan oleh backfill. `getHourly()` mengembalikan 24 bucket berlabel `00:00` sampai `23:00`, dan `getOverview()` menyertakannya sebagai `hourly`.
+- **Tampilan:** `HourlyPatternChart` ditempatkan di samping `TrafficTrendChart`. Grafik memakai tayangan halaman per jam agar perbandingan antar jam tetap bermakna; nilai pengunjung per jam tidak diklaim sebagai pengunjung unik lintas rentang.
+- **Zona waktu:** bucket tanggal dan jam dihitung dengan `Asia/Jakarta`, sehingga grafik mengikuti WIB meskipun server berjalan di UTC.
+
+### 6.11 Verifikasi Batch 2
+
+- **Test otomatis:** backend lulus 67 dari 67 test dan frontend lulus 56 dari 56 test. Kedua proyek lulus build produksi. Lint terarah pada berkas Batch 2 bersih; error `react-hooks/set-state-in-effect` di `useCmsData.ts` sudah ada sebelumnya dan tidak berasal dari Batch 2.
+- **Migrasi produksi:** `20261106010000_add_analytics_hourly` diterapkan ke Supabase pada 6 November 2026 sekitar 12:03 UTC.
+- **Backfill produksi:** `npm run analytics:backfill -- 90` membangun ulang rollup harian dan per jam. Hasilnya 7 baris `analytics_daily` dan 2 baris `analytics_hourly` karena event mentah yang tersedia baru mencakup 6 November 2026 pukul 17:27–18:52 WIB.
+- **Runtime API:** pemanggilan `AnalyticsService.getOverview("nextkarya-main", "2026-11-06", "2026-11-06")` di container produksi mengembalikan 24 bucket. Jam 17:00 berisi 7 tayangan, 2 pengunjung, 2 sesi; jam 18:00 berisi 5 tayangan, 2 pengunjung, 1 sesi.
+- **Artefak container:** `dist/services/analytics.service.js` pada image backend memuat `getHourly`, dan chunk statis frontend memuat teks `Pola Jam Sibuk`.
+- **Health dan log:** health API dan halaman utama merespons `200`; cron mendaftar tanpa error setelah deploy.
+
+### 6.12 Batasan yang masih tersisa
+
+- Backfill analitik perlu dijalankan sekali setelah deploy baru atau pemulihan basis data agar data historis terisi dan bucket Jakarta konsisten.
 - Pengujian rollup dilakukan terhadap database pembangunan; belum ada test integrasi otomatis dengan PostgreSQL.
 - Cron masih berjalan in-process; deployment multi-instance perlu memindahkannya ke worker.
 - Halaman yang tercatat sebelum 6 November 2026 tidak memiliki browser dan OS, sehingga tampil sebagai "Tidak diketahui" sampai ada kunjungan baru.
 - Rincian browser, OS, dan klik layanan/portofolio hanya tersedia selama 90 hari karena event mentah dihapus setelah periode itu.
 - Identitas pengunjung berbasis IP harian dapat menggabungkan beberapa pengunjung di balik NAT yang sama dan memisahkan satu pengunjung yang berganti IP.
-- **Batch 2 yang tersisa:** rentang tanggal kustom dan pola jam sibuk.
+- Pola jam sibuk hanya terisi untuk hari yang memiliki rollup. Backfill awal mencakup 90 hari; hari yang lebih lama tidak dapat direkonstruksi setelah event mentah dihapus.
 - **Site Selector dilewati** atas keputusan pemilik produk; dashboard tetap single-site.
 - Dokumen ini tidak mengklaim seluruh fitur Fase 2 selesai.
 
@@ -319,6 +337,6 @@ Batch 1 menutup celah akurasi data dan menambah rincian perilaku yang sebelumnya
 ## 7. Kesimpulan Hasil Audit
 
 Berdasarkan seluruh kriteria pada dokumen kanonik di direktori `backend/docs/`:
-1. **Dashboard Analitik Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6. Batch 1 analitik sudah live di produksi dengan identitas pengunjung harian, sesi heartbeat, validasi origin, breakdown browser/OS, klik layanan/portofolio, serta durasi dan porsi trafik pada Top Pages. Rentang tanggal kustom dan pola jam sibuk masih tersisa di Batch 2, sementara Site Selector dilewati.
+1. **Dashboard Analitik Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6. Batch 1 dan Batch 2 analitik sudah live di produksi, mencakup identitas pengunjung harian, sesi heartbeat, validasi origin, breakdown browser/OS, klik layanan/portofolio, durasi dan porsi trafik pada Top Pages, rentang tanggal kustom, serta grafik pola jam sibuk. Site Selector dilewati atas keputusan pemilik produk.
 2. **Sistem CMS Fase 1 (MVP)** telah diimplementasikan untuk lingkup Fase 1 dengan perbaikan yang didokumentasikan pada Bagian 6, mencakup manajemen konten multi-entitas berpartisi `site_id`, perlindungan auto-snapshot 5 versi rolling FIFO, pengamanan konflik editan via Optimistic Locking, alur soft delete arsip, dan toolkit darurat.
 3. Seluruh fitur **Fase 2** (seperti penjadwalan terbit otomatis, ekspor file CSV/Excel, pemetaan GeoIP kota, dan portal mandiri akun klien) telah terdokumentasi rapi pada batas lingkup rilis berikutnya tanpa mengganggu stabilitas operasional sistem saat ini.
