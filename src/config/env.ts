@@ -10,6 +10,10 @@ const envSchema = z
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
     REDIS_URL: z.string().default("redis://localhost:6379"),
     JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+    ANALYTICS_SALT_SECRET: z
+      .string()
+      .min(32, "ANALYTICS_SALT_SECRET must be at least 32 characters")
+      .optional(),
     WEBHOOK_SECRET: z.string().min(16, "WEBHOOK_SECRET must be at least 16 characters"),
     FRONTEND_URL: z.string().default("http://localhost:3000"),
     SITE_ID: z.string().default("nextkarya-main"),

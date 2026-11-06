@@ -37,13 +37,28 @@ export const analyticsEventSchema = z
       .min(10)
       .max(64)
       .regex(/^[a-zA-Z0-9_-]+$/, "Data kunjungan tidak valid"),
-    eventName: z.enum(["pageview", "whatsapp_click", "form_submit", "heartbeat"]),
+    eventName: z.enum([
+      "pageview",
+      "whatsapp_click",
+      "form_submit",
+      "heartbeat",
+      "service_click",
+      "portfolio_click",
+    ]),
     path: z
       .string()
       .trim()
       .min(1, "Alamat halaman wajib diisi")
       .max(255, "Alamat halaman maksimal 255 karakter")
       .refine((p) => p.startsWith("/") && !p.includes(".."), "Alamat halaman tidak valid"),
+    targetPath: z
+      .string()
+      .trim()
+      .min(1, "Tautan konten wajib diisi")
+      .max(255, "Tautan konten maksimal 255 karakter")
+      .refine((p) => p.startsWith("/") && !p.includes(".."), "Tautan konten tidak valid")
+      .optional()
+      .nullable(),
     referrer: z.string().trim().max(500).optional().nullable(),
     source: z.string().trim().max(50).default("direct"),
     device: z.enum(["mobile", "desktop", "tablet", "unknown"]).default("unknown"),
@@ -62,6 +77,22 @@ export const analyticsEventSchema = z
     {
       message: "Durasi kunjungan hanya boleh diisi untuk pembaruan kunjungan",
       path: ["durationSec"],
+    }
+  )
+  .refine(
+    (data) => {
+      if (
+        (data.eventName === "service_click" ||
+          data.eventName === "portfolio_click") &&
+        !data.targetPath
+      ) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Tautan konten wajib diisi untuk klik layanan atau portofolio",
+      path: ["targetPath"],
     }
   );
 

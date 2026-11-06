@@ -147,4 +147,186 @@ describe("AnalyticsService", () => {
     expect(previousWindow.gte.toISOString()).toBe("2026-10-20T00:00:00.000Z");
     expect(previousWindow.lte.toISOString()).toBe("2026-10-26T00:00:00.000Z");
   });
+
+  it("adds reading time and traffic share to the page ranking", async () => {
+    const { service } = createService([
+      [
+        dailyRow({
+          path: "/layanan",
+          pageviews: 60,
+          visitors: 50,
+          sessions: 3,
+          durationSec: 180,
+        }),
+        dailyRow({
+          path: "/portofolio",
+          pageviews: 40,
+          visitors: 30,
+          sessions: 2,
+          durationSec: 120,
+        }),
+      ],
+    ]);
+
+    const result = await service.getPages(
+      "nextkarya-main",
+      "2026-11-01",
+      "2026-11-02"
+    );
+
+    expect(result[0]).toMatchObject({
+      path: "/layanan",
+      pageviews: 60,
+      averageDurationSec: 60,
+      sharePercentage: 60,
+    });
+    expect(result[1]).toMatchObject({
+      path: "/portofolio",
+      pageviews: 40,
+      averageDurationSec: 60,
+      sharePercentage: 40,
+    });
+  });
+
+  it("excludes paths that only recorded clicks or heartbeats", async () => {
+    const { service } = createService([
+      [
+        dailyRow({ path: "/layanan", pageviews: 0, visitors: 1, sessions: 1 }),
+        dailyRow({
+          path: "/blog",
+          pageviews: 5,
+          visitors: 4,
+          sessions: 4,
+          durationSec: 40,
+        }),
+      ],
+    ]);
+
+    const result = await service.getPages(
+      "nextkarya-main",
+      "2026-11-01",
+      "2026-11-02"
+    );
+
+    expect(result.map((page) => page.path)).toEqual(["/blog"]);
+    expect(result[0].sharePercentage).toBe(100);
+  });
+});
+
+function createEventService(
+  rowsByDimension: Record<string, unknown[]>
+) {
+  const groupBy = vi.fn().mockImplementation((args: { by: string[] }) => {
+    return Promise.resolve(rowsByDimension[args.by[0]] ?? []);
+  });
+
+  const service = new AnalyticsService({
+    prisma: { analyticsEvent: { groupBy } } as never,
+    tenantGuard: tenantGuard as never,
+  });
+
+  return { service, groupBy };
+}
+
+describe("AnalyticsService audience", () => {
+  it("aggregates browser and OS shares from pageview events", async () => {
+    const { service, groupBy } = createEventService({
+      browser: [
+        { browser: "Chrome", _count: { _all: 60 } },
+        { browser: "Safari", _count: { _all: 40 } },
+      ],
+      os: [
+        { os: "Android", _count: { _all: 70 } },
+        { os: "iOS", _count: { _all: 20 } },
+        { os: null, _count: { _all: 10 } },
+      ],
+    });
+
+    const result = await service.getAudience(
+      "nextkarya-main",
+      "2026-11-01",
+      "2026-11-02"
+    );
+
+    expect(result.browsers).toEqual([
+      { name: "Chrome", pageviews: 60, sharePercentage: 60 },
+      { name: "Safari", pageviews: 40, sharePercentage: 40 },
+    ]);
+    expect(result.os[0]).toEqual({
+      name: "Android",
+      pageviews: 70,
+      sharePercentage: 70,
+    });
+    expect(result.os[2]).toMatchObject({
+      name: "Tidak diketahui",
+      pageviews: 10,
+      sharePercentage: 10,
+    });
+    expect(groupBy.mock.calls[0][0].where.occurredAt.gte.toISOString()).toBe(
+      "2026-10-31T17:00:00.000Z"
+    );
+    expect(groupBy.mock.calls[0][0].where.eventName).toBe("pageview");
+  });
+
+  it("returns empty breakdowns when there are no pageview events", async () => {
+    const { service } = createEventService({ browser: [], os: [] });
+
+    const result = await service.getAudience(
+      "nextkarya-main",
+      "2026-11-01",
+      "2026-11-02"
+    );
+
+    expect(result.browsers).toEqual([]);
+    expect(result.os).toEqual([]);
+  });
+});
+
+describe("AnalyticsService content clicks", () => {
+  it("ranks service and portfolio click targets", async () => {
+    const { service, groupBy } = createEventService({
+      eventName: [
+        {
+          eventName: "portfolio_click",
+          targetPath: "/portofolio/aplikasi-kasir",
+          _count: { _all: 9 },
+        },
+        {
+          eventName: "service_click",
+          targetPath: "/layanan/web-development",
+          _count: { _all: 7 },
+        },
+        {
+          eventName: "service_click",
+          targetPath: "/layanan#paket-layanan",
+          _count: { _all: 3 },
+        },
+      ],
+    });
+
+    const result = await service.getContentClicks(
+      "nextkarya-main",
+      "2026-11-01",
+      "2026-11-02"
+    );
+
+    expect(result.items.map((item) => item.targetPath)).toEqual([
+      "/portofolio/aplikasi-kasir",
+      "/layanan/web-development",
+      "/layanan#paket-layanan",
+    ]);
+    expect(result.items[0]).toMatchObject({
+      type: "portfolio",
+      clicks: 9,
+    });
+    expect(result.items[1]).toMatchObject({
+      type: "service",
+      clicks: 7,
+    });
+    expect(result.totalServiceClicks).toBe(10);
+    expect(result.totalPortfolioClicks).toBe(9);
+    expect(groupBy.mock.calls[0][0].where.eventName).toEqual({
+      in: ["service_click", "portfolio_click"],
+    });
+  });
 });

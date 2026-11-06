@@ -461,6 +461,7 @@ model AnalyticsEvent {
   sessionId     String   @db.VarChar(64)
   eventName     String   @db.VarChar(50)
   path          String   @db.VarChar(255)
+  targetPath    String?  @db.VarChar(255)
   referrer      String?  @db.VarChar(500)
   source        String   @default("direct") @db.VarChar(50)
   device        String   @default("unknown") @db.VarChar(20)

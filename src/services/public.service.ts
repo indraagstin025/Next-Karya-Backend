@@ -1,9 +1,14 @@
-import crypto from "crypto";
 import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../config/prisma";
+import { env as defaultEnv, EnvConfig } from "../config/env";
 import { ITenantGuard } from "../container/types";
 import { AppError } from "../core/AppError";
 import { defaultLogger, ILogger } from "../core/logger";
+import {
+  buildVisitorIdHash,
+  getJakartaDateKey,
+  isAllowedAnalyticsOrigin,
+} from "../utils/analytics";
 import { defaultTenantGuard } from "../utils/optimistic";
 import { PaginationMeta } from "../utils/response";
 
@@ -11,6 +16,7 @@ export interface PublicServiceDeps {
   prisma: PrismaClient;
   tenantGuard: ITenantGuard;
   logger: ILogger;
+  env: EnvConfig;
 }
 
 /**
@@ -23,6 +29,7 @@ export class PublicService {
       prisma: defaultPrisma,
       tenantGuard: defaultTenantGuard,
       logger: defaultLogger,
+      env: defaultEnv,
     }
   ) {}
 
@@ -510,27 +517,54 @@ export class PublicService {
   }
 
   /**
-   * Asynchronously persists an anonymous visitor beacon event (`pageview`, `whatsapp_click`,
-   * `form_submit`, or `heartbeat`) using a non-reversible SHA-256 visitor hash without blocking the HTTP response.
+   * Asynchronously persists an anonymous visitor beacon event (`pageview`,
+   * `whatsapp_click`, `form_submit`, `heartbeat`, `service_click`, or
+   * `portfolio_click`) using a daily salted visitor hash without blocking the
+   * HTTP response.
    */
-  async recordAnalyticsEvent(payload: {
-    site_id?: string;
-    sessionId: string;
-    eventName: "pageview" | "whatsapp_click" | "form_submit" | "heartbeat";
-    path: string;
-    referrer?: string | null;
-    source: string;
-    device: "mobile" | "desktop" | "tablet" | "unknown";
-    browser?: string | null;
-    os?: string | null;
-    durationSec: number;
-  }) {
+  async recordAnalyticsEvent(
+    payload: {
+      site_id?: string;
+      sessionId: string;
+      eventName:
+        | "pageview"
+        | "whatsapp_click"
+        | "form_submit"
+        | "heartbeat"
+        | "service_click"
+        | "portfolio_click";
+      path: string;
+      targetPath?: string | null;
+      referrer?: string | null;
+      source: string;
+      device: "mobile" | "desktop" | "tablet" | "unknown";
+      browser?: string | null;
+      os?: string | null;
+      durationSec: number;
+    },
+    context: {
+      clientIp?: string | null;
+      origin?: string | null;
+      referer?: string | null;
+      host?: string | null;
+    } = {}
+  ) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(payload.site_id);
-    const visitorIdHash = crypto
-      .createHash("sha256")
-      .update(payload.sessionId + (payload.browser || ""))
-      .digest("hex")
-      .slice(0, 32);
+
+    if (!this.isAllowedOrigin(context)) {
+      throw AppError.forbidden(
+        "ANALYTICS_ORIGIN_REJECTED",
+        "Asal permintaan analitik tidak dikenali."
+      );
+    }
+
+    const visitorIdHash = buildVisitorIdHash({
+      secret: this.deps.env.ANALYTICS_SALT_SECRET || this.deps.env.JWT_SECRET,
+      siteId: site_id,
+      dateKey: getJakartaDateKey(),
+      sessionId: payload.sessionId,
+      clientIp: context.clientIp,
+    });
 
     this.deps.prisma.analyticsEvent
       .create({
@@ -539,6 +573,7 @@ export class PublicService {
           sessionId: payload.sessionId,
           eventName: payload.eventName,
           path: payload.path,
+          targetPath: payload.targetPath ?? null,
           referrer: payload.referrer,
           source: payload.source,
           device: payload.device,
@@ -555,5 +590,28 @@ export class PublicService {
       });
 
     return { status: "recorded" };
+  }
+
+  private isAllowedOrigin(context: {
+    origin?: string | null;
+    referer?: string | null;
+    host?: string | null;
+  }): boolean {
+    const allowedOrigins = [
+      this.deps.env.FRONTEND_URL,
+      "https://nextkarya.web.id",
+      "https://www.nextkarya.web.id",
+    ];
+
+    if (this.deps.env.NODE_ENV !== "production") {
+      allowedOrigins.push("http://localhost:3000");
+    }
+
+    return isAllowedAnalyticsOrigin({
+      origin: context.origin,
+      referer: context.referer,
+      host: context.host,
+      allowedOrigins,
+    });
   }
 }

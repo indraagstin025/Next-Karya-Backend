@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { PublicService } from "../services/public.service";
 import { sendSuccess, sendPaginated, sendError } from "../utils/response";
+import { resolveClientIp } from "../utils/analytics";
 import { defaultTenantGuard } from "../utils/optimistic";
 import { ITenantGuard } from "../container/types";
 
@@ -232,7 +233,12 @@ export class PublicController {
    */
   recordAnalyticsEvent = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await this.publicService.recordAnalyticsEvent(req.body);
+      const result = await this.publicService.recordAnalyticsEvent(req.body, {
+        clientIp: resolveClientIp(req.headers) ?? req.ip ?? null,
+        origin: req.get("origin") ?? null,
+        referer: req.get("referer") ?? null,
+        host: req.get("host") ?? null,
+      });
       return sendSuccess(res, result);
     } catch (err) {
       next(err);

@@ -16,6 +16,12 @@ export function createAnalyticsRouter(container: AppContainer = appContainer): R
   router.get("/pages", requireAuth, analyticsController.getPages);
   router.get("/sources", requireAuth, analyticsController.getSources);
   router.get("/devices", requireAuth, analyticsController.getDevices);
+  router.get("/audience", requireAuth, analyticsController.getAudience);
+  router.get(
+    "/content-clicks",
+    requireAuth,
+    analyticsController.getContentClicks
+  );
 
   return router;
 }

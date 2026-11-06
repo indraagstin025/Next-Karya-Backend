@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "../config/prisma";
 import { ITenantGuard } from "../container/types";
+import { jakartaDateRange } from "../utils/analytics";
 import { defaultTenantGuard } from "../utils/optimistic";
 
 export interface AnalyticsServiceDeps {
@@ -12,6 +13,33 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function startOfUtcDay(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function toShareBreakdown(
+  rows: { name: string | null | undefined; count: number }[]
+) {
+  const totals = new Map<string, number>();
+
+  for (const row of rows) {
+    const name = row.name?.trim() || "Tidak diketahui";
+    totals.set(name, (totals.get(name) ?? 0) + row.count);
+  }
+
+  const total = Array.from(totals.values()).reduce(
+    (sum, count) => sum + count,
+    0
+  );
+
+  return Array.from(totals.entries())
+    .map(([name, pageviews]) => ({
+      name,
+      pageviews,
+      sharePercentage:
+        total > 0
+          ? parseFloat(((pageviews / total) * 100).toFixed(1))
+          : 0,
+    }))
+    .sort((a, b) => b.pageviews - a.pageviews);
 }
 
 /**
@@ -331,6 +359,7 @@ export class AnalyticsService {
         sessions: number;
         bounces: number;
         conversions: number;
+        durationSec: number;
       }
     >();
 
@@ -342,16 +371,26 @@ export class AnalyticsService {
         sessions: 0,
         bounces: 0,
         conversions: 0,
+        durationSec: 0,
       };
       existing.pageviews += r.pageviews;
       existing.visitors += r.visitors;
       existing.sessions += r.sessions;
       existing.bounces += r.bounces;
       existing.conversions += r.whatsappClicks + r.formSubmits;
+      existing.durationSec += r.durationSec;
       pathMap.set(r.path, existing);
     }
 
-    const sorted = Array.from(pathMap.values())
+    const rankedPaths = Array.from(pathMap.values()).filter(
+      (row) => row.pageviews > 0
+    );
+    const totalPageviews = rankedPaths.reduce(
+      (total, row) => total + row.pageviews,
+      0
+    );
+
+    const sorted = rankedPaths
       .sort((a, b) => b.pageviews - a.pageviews)
       .slice(0, safeLimit);
 
@@ -366,16 +405,132 @@ export class AnalyticsService {
         visitors > 0
           ? parseFloat(((r.conversions / visitors) * 100).toFixed(1))
           : 0;
+      const averageDurationSec =
+        r.sessions > 0 ? Math.round(r.durationSec / r.sessions) : 0;
+      const sharePercentage =
+        totalPageviews > 0
+          ? parseFloat(((pageviews / totalPageviews) * 100).toFixed(2))
+          : 0;
 
       return {
         path: r.path,
         pageviews,
         visitors,
+        averageDurationSec,
+        sharePercentage,
         bounceRate,
         conversions: r.conversions,
         conversionRate,
       };
     });
+  }
+
+  /**
+   * Groups raw pageview events by browser and operating system for the selected
+   * Jakarta-day window. Raw events are retained for 90 days.
+   */
+  async getAudience(
+    rawSiteId?: string,
+    fromDateStr?: string,
+    toDateStr?: string
+  ) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const { gte, lte } = jakartaDateRange(fromDateStr, toDateStr);
+    const where = {
+      site_id,
+      eventName: "pageview",
+      occurredAt: { gte, lte },
+    };
+
+    const [browserRows, osRows] = await Promise.all([
+      this.deps.prisma.analyticsEvent.groupBy({
+        by: ["browser"],
+        where,
+        _count: { _all: true },
+      }),
+      this.deps.prisma.analyticsEvent.groupBy({
+        by: ["os"],
+        where,
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      browsers: toShareBreakdown(
+        browserRows.map((row) => ({
+          name: row.browser,
+          count: row._count._all,
+        }))
+      ),
+      os: toShareBreakdown(
+        osRows.map((row) => ({
+          name: row.os,
+          count: row._count._all,
+        }))
+      ),
+    };
+  }
+
+  /**
+   * Ranks service and portfolio link targets by click volume from raw events.
+   */
+  async getContentClicks(
+    rawSiteId?: string,
+    fromDateStr?: string,
+    toDateStr?: string,
+    limit = 10
+  ) {
+    const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
+    const safeLimit = Math.min(Math.max(limit, 1), 100);
+    const { gte, lte } = jakartaDateRange(fromDateStr, toDateStr);
+
+    const rows = await this.deps.prisma.analyticsEvent.groupBy({
+      by: ["eventName", "targetPath"],
+      where: {
+        site_id,
+        eventName: { in: ["service_click", "portfolio_click"] },
+        targetPath: { not: null },
+        occurredAt: { gte, lte },
+      },
+      _count: { _all: true },
+    });
+
+    const items: {
+      targetPath: string;
+      type: "service" | "portfolio";
+      clicks: number;
+    }[] = [];
+    let totalServiceClicks = 0;
+    let totalPortfolioClicks = 0;
+
+    for (const row of rows) {
+      if (!row.targetPath) continue;
+
+      const clicks = row._count._all;
+      if (row.eventName === "service_click") {
+        totalServiceClicks += clicks;
+        items.push({
+          targetPath: row.targetPath,
+          type: "service",
+          clicks,
+        });
+      } else if (row.eventName === "portfolio_click") {
+        totalPortfolioClicks += clicks;
+        items.push({
+          targetPath: row.targetPath,
+          type: "portfolio",
+          clicks,
+        });
+      }
+    }
+
+    items.sort((a, b) => b.clicks - a.clicks);
+
+    return {
+      items: items.slice(0, safeLimit),
+      totalServiceClicks,
+      totalPortfolioClicks,
+    };
   }
 
   /**

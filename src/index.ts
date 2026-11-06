@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { appContainer, AppContainer } from "./container";
+import { AppError } from "./core/AppError";
 import { createV1Router } from "./routes/v1";
 import { notFoundHandler } from "./middlewares/notFoundHandler";
 import { initCronJobs } from "./cron";
@@ -52,7 +53,12 @@ export function createApp(container: AppContainer = appContainer): Express {
         if (!origin || allowedOrigins.has(origin)) {
           return callback(null, true);
         }
-        return callback(new Error("CORS_ORIGIN_NOT_ALLOWED"));
+        return callback(
+          AppError.forbidden(
+            "CORS_ORIGIN_NOT_ALLOWED",
+            "Asal permintaan tidak diizinkan."
+          )
+        );
       },
       credentials: true,
       methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
