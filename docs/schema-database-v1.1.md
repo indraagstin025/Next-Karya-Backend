@@ -262,8 +262,6 @@ Menampung layanan resmi agensi untuk disajikan pada halaman Layanan dan endpoint
 | `icon` | `VARCHAR(100)` | `String` | - | Tidak | - | Nama ikon Lucide / identifier ikon 3D |
 | `shortDesc` | `TEXT` | `String` | - | Tidak | - | Deskripsi singkat pengantar |
 | `features` | `TEXT[]` | `String[]` | - | Tidak | `{}` | Checklist fitur keunggulan |
-| `priceLabel` | `VARCHAR(100)` | `String` | - | Tidak | - | Contoh: "Mulai dari Rp 4.500.000" |
-| `priceNote` | `VARCHAR(255)?`| `String?` | - | Ya | `null` | Catatan termin / estimasi durasi pengerjaan |
 | `badge` | `VARCHAR(100)?`| `String?` | - | Ya | `null` | Label sorotan (contoh: "Paling Populer", "Rekomendasi") |
 | `ctaLabel` | `VARCHAR(100)` | `String` | - | Tidak | `Konsultasi Sekarang` | Teks tombol tindakan |
 | `ctaHref` | `VARCHAR(255)` | `String` | - | Tidak | `/kontak` | Target tautan tombol |
@@ -1006,8 +1004,6 @@ model Service {
   icon           String        @db.VarChar(100)
   shortDesc      String        @db.Text
   features       String[]      @default([])
-  priceLabel     String        @db.VarChar(100)
-  priceNote      String?       @db.VarChar(255)
   badge          String?       @db.VarChar(100)
   ctaLabel       String        @default("Konsultasi Sekarang") @db.VarChar(100)
   ctaHref        String        @default("/kontak") @db.VarChar(255)

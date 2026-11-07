@@ -220,8 +220,6 @@ model Service {
   icon           String        @db.VarChar(100)
   shortDesc      String        @db.Text
   features       String[]      @default([])
-  priceLabel     String        @db.VarChar(100)
-  priceNote      String?       @db.VarChar(255)
   badge          String?       @db.VarChar(100)
   ctaLabel       String        @default("Konsultasi Sekarang") @db.VarChar(100)
   ctaHref        String        @default("/kontak") @db.VarChar(255)

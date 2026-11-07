@@ -198,8 +198,6 @@ export interface BackupTables {
     icon: string;
     shortDesc: string;
     features: string[];
-    priceLabel: string;
-    priceNote: string | null;
     badge: string | null;
     ctaLabel: string;
     ctaHref: string;

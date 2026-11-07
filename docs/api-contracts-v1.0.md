@@ -198,9 +198,9 @@ Endpoint publik digunakan oleh antarmuka website resmi `nextkarya.web.id` untuk 
 * **Filter:** `?site_id=nextkarya-main&isFeatured=true&limit=6`
 * **Field Utama:** `title`, `slug`, `clientName`, `serviceCategory`, `summary`, `impactSummary`, `metricResult`, `technologies`, `thumbnailUrl`, `projectUrl`.
 
-### 3.4 `GET /api/v1/services` (Katalog Layanan & Harga)
+### 3.4 `GET /api/v1/services` (Katalog Layanan)
 * **Query Parameters:** `?site_id=nextkarya-main`
-* **Field Utama:** `title`, `slug`, `icon`, `shortDesc`, `features`, `priceLabel`, `priceNote`, `badge`, `ctaLabel`, `ctaHref`, `sortOrder`.
+* **Field Utama:** `title`, `slug`, `icon`, `shortDesc`, `features`, `badge`, `ctaLabel`, `ctaHref`, `sortOrder`.
 
 ### 3.5 `GET /api/v1/faqs` (Daftar FAQ)
 * **Query Parameters:** `?site_id=nextkarya-main&category=Umum`

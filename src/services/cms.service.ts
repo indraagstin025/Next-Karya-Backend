@@ -682,8 +682,6 @@ export class CmsService {
         icon: payload.icon || "Globe",
         shortDesc: payload.shortDesc,
         features: Array.isArray(payload.features) ? payload.features : [],
-        priceLabel: payload.priceLabel,
-        priceNote: payload.priceNote ?? null,
         badge: payload.badge ?? null,
         ctaLabel: payload.ctaLabel || "Konsultasi Sekarang",
         ctaHref: payload.ctaHref || "#konsultasi",
@@ -715,8 +713,6 @@ export class CmsService {
     if (payload.icon !== undefined) data.icon = payload.icon;
     if (payload.shortDesc !== undefined) data.shortDesc = payload.shortDesc;
     if (payload.features !== undefined) data.features = payload.features;
-    if (payload.priceLabel !== undefined) data.priceLabel = payload.priceLabel;
-    if (payload.priceNote !== undefined) data.priceNote = payload.priceNote;
     if (payload.badge !== undefined) data.badge = payload.badge;
     if (payload.ctaLabel !== undefined) data.ctaLabel = payload.ctaLabel;
     if (payload.ctaHref !== undefined) data.ctaHref = payload.ctaHref;
@@ -1359,8 +1355,6 @@ export class CmsService {
           icon: data.icon ?? target.icon,
           shortDesc: data.shortDesc ?? target.shortDesc,
           features: Array.isArray(data.features) ? data.features : target.features,
-          priceLabel: data.priceLabel ?? target.priceLabel,
-          priceNote: data.priceNote ?? target.priceNote,
           badge: data.badge ?? target.badge,
           ctaLabel: data.ctaLabel ?? target.ctaLabel,
           ctaHref: data.ctaHref ?? target.ctaHref,

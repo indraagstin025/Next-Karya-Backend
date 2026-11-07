@@ -355,8 +355,6 @@ export class PublicService {
         icon: true,
         shortDesc: true,
         features: true,
-        priceLabel: true,
-        priceNote: true,
         badge: true,
         ctaLabel: true,
         ctaHref: true,

@@ -141,8 +141,6 @@ export const createServiceSchema = z
     icon: z.string().trim().min(1, "Ikon layanan wajib diisi").max(100, "Nama ikon maksimal 100 karakter").default("Globe"),
     shortDesc: z.string().trim().min(10, "Deskripsi singkat minimal 10 karakter").max(1000, "Deskripsi singkat maksimal 1.000 karakter"),
     features: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
-    priceLabel: z.string().trim().min(1, "Label harga wajib diisi").max(100, "Label harga maksimal 100 karakter"),
-    priceNote: z.string().trim().max(255, "Catatan harga maksimal 255 karakter").optional().nullable(),
     badge: z.string().trim().max(100, "Label badge maksimal 100 karakter").optional().nullable(),
     ctaLabel: z.string().trim().min(1, "Teks tombol wajib diisi").max(100, "Teks tombol maksimal 100 karakter").default("Konsultasi Sekarang"),
     ctaHref: safeHrefField.default("#konsultasi"),
