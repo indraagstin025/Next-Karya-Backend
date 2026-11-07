@@ -75,9 +75,10 @@ export function getJakartaDateKey(date: Date = new Date()): string {
  */
 export function jakartaDateKeys(
   fromDateStr?: string,
-  toDateStr?: string
+  toDateStr?: string,
+  now: Date = new Date()
 ): JakartaDateKeys {
-  const toKey = isDateKey(toDateStr) ? toDateStr : getJakartaDateKey();
+  const toKey = isDateKey(toDateStr) ? toDateStr : getJakartaDateKey(now);
   const fallbackFrom = getJakartaDateKey(
     new Date(
       new Date(`${toKey}T00:00:00.000${JAKARTA_OFFSET}`).getTime() -
@@ -106,7 +107,7 @@ export function validateAnalyticsDateRange(
     return "Tanggal akhir tidak valid.";
   }
 
-  const { fromKey, toKey } = jakartaDateKeys(fromDateStr, toDateStr);
+  const { fromKey, toKey } = jakartaDateKeys(fromDateStr, toDateStr, now);
   const fromTime = parseDateKey(fromKey);
   const toTime = parseDateKey(toKey);
   const todayTime = parseDateKey(getJakartaDateKey(now));
