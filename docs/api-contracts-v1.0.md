@@ -196,7 +196,7 @@ Endpoint publik digunakan oleh antarmuka website resmi `nextkarya.web.id` untuk 
 
 ### 3.3 `GET /api/v1/portfolios` & `GET /api/v1/portfolios/:slug` (Portofolio Publik)
 * **Filter:** `?site_id=nextkarya-main&isFeatured=true&limit=6`
-* **Field Utama:** `title`, `slug`, `clientName`, `serviceCategory`, `summary`, `impactSummary`, `metricResult`, `technologies`, `thumbnailUrl`, `projectUrl`.
+* **Field Utama:** `title`, `slug`, `clientName`, `clientNameMode`, `serviceCategory`, `summary`, `metricResult`, `thumbnailUrl`, `projectUrl`.
 
 ### 3.4 `GET /api/v1/services` (Katalog Layanan)
 * **Query Parameters:** `?site_id=nextkarya-main`

@@ -490,12 +490,11 @@ export class CmsService {
         title: payload.title,
         slug: payload.slug,
         clientName: payload.clientName,
+        clientNameMode: payload.clientNameMode ?? "FULL",
         serviceCategory: payload.serviceCategory,
         summary: payload.summary,
-        impactSummary: payload.impactSummary ?? null,
         metricResult: payload.metricResult ?? null,
         content: payload.content ?? { description: payload.summary },
-        technologies: Array.isArray(payload.technologies) ? payload.technologies : [],
         thumbnailUrl: payload.thumbnailUrl ?? null,
         thumbnailAlt: payload.thumbnailAlt ?? payload.title,
         projectUrl: payload.projectUrl ?? null,
@@ -526,12 +525,11 @@ export class CmsService {
     if (payload.title !== undefined) data.title = payload.title;
     if (payload.slug !== undefined) data.slug = payload.slug;
     if (payload.clientName !== undefined) data.clientName = payload.clientName;
+    if (payload.clientNameMode !== undefined) data.clientNameMode = payload.clientNameMode;
     if (payload.serviceCategory !== undefined) data.serviceCategory = payload.serviceCategory;
     if (payload.summary !== undefined) data.summary = payload.summary;
-    if (payload.impactSummary !== undefined) data.impactSummary = payload.impactSummary;
     if (payload.metricResult !== undefined) data.metricResult = payload.metricResult;
     if (payload.content !== undefined) data.content = payload.content;
-    if (payload.technologies !== undefined) data.technologies = payload.technologies;
     if (payload.thumbnailUrl !== undefined) data.thumbnailUrl = payload.thumbnailUrl;
     if (payload.thumbnailAlt !== undefined) data.thumbnailAlt = payload.thumbnailAlt;
     if (payload.projectUrl !== undefined) data.projectUrl = payload.projectUrl;
@@ -1327,12 +1325,11 @@ export class CmsService {
         data: {
           title: data.title ?? target.title,
           clientName: data.clientName ?? target.clientName,
+          clientNameMode: data.clientNameMode ?? target.clientNameMode,
           serviceCategory: data.serviceCategory ?? target.serviceCategory,
           summary: data.summary ?? target.summary,
-          impactSummary: data.impactSummary ?? target.impactSummary,
           metricResult: data.metricResult ?? target.metricResult,
           content: data.content ?? target.content,
-          technologies: Array.isArray(data.technologies) ? data.technologies : target.technologies,
           thumbnailUrl: data.thumbnailUrl ?? target.thumbnailUrl,
           thumbnailAlt: data.thumbnailAlt ?? target.thumbnailAlt,
           projectUrl: data.projectUrl ?? target.projectUrl,

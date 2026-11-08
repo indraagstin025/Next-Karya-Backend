@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import {
   ActivityActionType,
+  ClientNameMode,
   ContentStatus,
   EmergencyActionType,
   LeadStatus,
@@ -157,14 +158,13 @@ export interface BackupTables {
     title: string;
     slug: string;
     clientName: string;
+    clientNameMode: ClientNameMode;
     serviceCategory: string;
     summary: string;
-    impactSummary: string | null;
     metricResult: string | null;
     content: Prisma.JsonValue;
     thumbnailUrl: string | null;
     thumbnailAlt: string | null;
-    technologies: string[];
     projectUrl: string | null;
     isFeatured: boolean;
     sortOrder: number;

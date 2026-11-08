@@ -105,18 +105,19 @@ export const updatePostSchema = createPostSchema
   .strict();
 
 // Portfolios
+const clientNameModeField = z.enum(["FULL", "MASKED"]);
+
 export const createPortfolioSchema = z
   .object({
     site_id: siteIdField,
     title: z.string().trim().min(3, "Judul portofolio minimal 3 karakter").max(255, "Judul portofolio maksimal 255 karakter"),
     slug: slugField,
     clientName: z.string().trim().min(2, "Nama klien minimal 2 karakter").max(255, "Nama klien maksimal 255 karakter"),
+    clientNameMode: clientNameModeField.default("FULL"),
     serviceCategory: z.string().trim().min(2, "Kategori solusi wajib diisi").max(100, "Kategori solusi maksimal 100 karakter"),
     summary: z.string().trim().min(10, "Ringkasan minimal 10 karakter").max(1000, "Ringkasan maksimal 1.000 karakter"),
-    impactSummary: z.string().trim().max(1000, "Ringkasan dampak maksimal 1.000 karakter").optional().nullable(),
     metricResult: z.string().trim().max(100, "Hasil pengukuran maksimal 100 karakter").optional().nullable(),
     content: safeJsonContentField.default({ description: "" }),
-    technologies: z.array(z.string().trim().min(1).max(60)).max(25).default([]),
     thumbnailUrl: safeUrlOrPathField,
     thumbnailAlt: z.string().trim().max(255, "Teks keterangan gambar maksimal 255 karakter").optional().nullable(),
     projectUrl: safeUrlOrPathField,
@@ -128,6 +129,7 @@ export const createPortfolioSchema = z
 export const updatePortfolioSchema = createPortfolioSchema
   .partial()
   .extend({
+    clientNameMode: clientNameModeField.optional(),
     updatedAt: z.string().trim().min(1, "Muat ulang halaman sebelum menyimpan perubahan"),
   })
   .strict();

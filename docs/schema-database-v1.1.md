@@ -104,6 +104,10 @@ Nilai enum di bawah ini harus sama persis antara skema Prisma, validasi Zod, API
 * `SCHEDULE_SHIFTED`: Penggeseran tanggal mulai atau target selesai proyek.
 * `CONTENT_STATUS_CHANGED`: Publikasi atau pengarsipan konten.
 
+### 2.7 `ClientNameMode` (Mode Tampilan Nama Klien Portofolio)
+* `FULL`: Nama klien ditampilkan apa adanya di situs publik.
+* `MASKED`: Nama klien diganti label "Nama Disamarkan" di situs publik.
+
 ---
 
 ## 3. Rincian Struktur Tabel
@@ -215,7 +219,7 @@ Menampung materi artikel publik lengkap dengan tag dinamis, estimasi waktu baca,
 ---
 
 #### Tabel 5: `portfolios` (Studi Kasus Portofolio Digital)
-Menampung data portofolio pengerjaan proyek klien lengkap dengan dampak bisnis, metrik terstruktur, dan status featured.
+Menampung data portofolio pengerjaan proyek klien lengkap dengan metrik hasil terukur, pengaturan nama klien, dan status featured.
 
 | Nama Kolom | Tipe PostgreSQL | Tipe Prisma | Atribut | Nullable | Default | Keterangan |
 | :--- | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -224,14 +228,13 @@ Menampung data portofolio pengerjaan proyek klien lengkap dengan dampak bisnis, 
 | `title` | `VARCHAR(255)` | `String` | - | Tidak | - | Judul studi kasus proyek |
 | `slug` | `VARCHAR(255)` | `String` | - | Tidak | - | Slug URL portofolio |
 | `clientName` | `VARCHAR(255)` | `String` | - | Tidak | - | Nama klien / jenama mitra |
+| `clientNameMode` | `ClientNameMode` | `ClientNameMode` | - | Tidak | `FULL` | `FULL` menampilkan nama klien, `MASKED` menampilkan "Nama Disamarkan" |
 | `serviceCategory` | `VARCHAR(100)` | `String` | - | Tidak | - | Kategori (Web Bisnis, CMS, dll) |
 | `summary` | `TEXT` | `String` | - | Tidak | - | Ringkasan solusi & hasil proyek |
-| `impactSummary` | `TEXT?` | `String?` | - | Ya | `null` | Penjelasan dampak bisnis nyata |
 | `metricResult` | `VARCHAR(100)?` | `String?` | - | Ya | `null` | Metrik keberhasilan terukur (contoh: "+150% konversi") |
 | `content` | `JSONB` | `Json` | - | Tidak | - | Rincian pengerjaan teknis (JSON terstruktur) |
 | `thumbnailUrl` | `VARCHAR(500)` | `String?` | - | Ya | `null` | Gambar pratinjau kartu |
 | `thumbnailAlt` | `VARCHAR(255)` | `String?` | - | Ya | `null` | Teks alt aksesibilitas |
-| `technologies` | `TEXT[]` | `String[]` | - | Tidak | `{}` | Daftar teknologi (Next.js, Tailwind, dll) |
 | `projectUrl` | `VARCHAR(500)` | `String?` | - | Ya | `null` | Tautan website hasil jadi |
 | `isFeatured` | `BOOLEAN` | `Boolean` | - | Tidak | `false` | Ditampilkan di etalase beranda utama |
 | `sortOrder` | `INTEGER` | `Int` | - | Tidak | `0` | Urutan penataan kartu portofolio |
@@ -802,6 +805,11 @@ enum ContentStatus {
   ARCHIVED
 }
 
+enum ClientNameMode {
+  FULL
+  MASKED
+}
+
 enum LeadStatus {
   BARU
   DIHUBUNGI
@@ -970,14 +978,13 @@ model Portfolio {
   title           String        @db.VarChar(255)
   slug            String        @db.VarChar(255)
   clientName      String        @db.VarChar(255)
+  clientNameMode  ClientNameMode @default(FULL)
   serviceCategory String        @db.VarChar(100)
   summary         String        @db.Text
-  impactSummary   String?       @db.Text
   metricResult    String?       @db.VarChar(100)
   content         Json          @db.JsonB
   thumbnailUrl    String?       @db.VarChar(500)
   thumbnailAlt    String?       @db.VarChar(255)
-  technologies    String[]      @default([])
   projectUrl      String?       @db.VarChar(500)
   isFeatured      Boolean       @default(false)
   sortOrder       Int           @default(0)

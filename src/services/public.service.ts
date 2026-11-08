@@ -298,11 +298,10 @@ export class PublicService {
           title: true,
           slug: true,
           clientName: true,
+          clientNameMode: true,
           serviceCategory: true,
           summary: true,
-          impactSummary: true,
           metricResult: true,
-          technologies: true,
           thumbnailUrl: true,
           thumbnailAlt: true,
           projectUrl: true,
@@ -312,6 +311,12 @@ export class PublicService {
       }),
     ]);
 
+    const safeItems = items.map(({ clientName, clientNameMode, ...item }) => ({
+      ...item,
+      clientName: clientNameMode === "MASKED" ? "Nama Disamarkan" : clientName,
+      clientNameMode,
+    }));
+
     const meta: PaginationMeta = {
       page,
       limit,
@@ -319,7 +324,7 @@ export class PublicService {
       totalPages: Math.ceil(total / limit) || 1,
     };
 
-    return { items, meta };
+    return { items: safeItems, meta };
   }
 
   /**
@@ -327,13 +332,21 @@ export class PublicService {
    */
   async getPortfolioBySlug(rawSiteId: string | undefined, slug: string) {
     const site_id = this.deps.tenantGuard.resolveAuthorizedSiteId(rawSiteId);
-    return this.deps.prisma.portfolio.findFirst({
+    const portfolio = await this.deps.prisma.portfolio.findFirst({
       where: {
         site_id,
         slug,
         status: "PUBLISHED",
       },
     });
+
+    if (!portfolio) return portfolio;
+
+    return {
+      ...portfolio,
+      clientName:
+        portfolio.clientNameMode === "MASKED" ? "Nama Disamarkan" : portfolio.clientName,
+    };
   }
 
   /**

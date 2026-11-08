@@ -17,6 +17,11 @@ enum ContentStatus {
   ARCHIVED
 }
 
+enum ClientNameMode {
+  FULL
+  MASKED
+}
+
 enum LeadStatus {
   BARU
   DIHUBUNGI
@@ -185,16 +190,15 @@ model Portfolio {
   site_id         String        @default("nextkarya-main") @db.VarChar(64)
   title           String        @db.VarChar(255)
   slug            String        @db.VarChar(255)
-  clientName      String        @db.VarChar(255)
-  serviceCategory String        @db.VarChar(100)
-  summary         String        @db.Text
-  impactSummary   String?       @db.Text
-  metricResult    String?       @db.VarChar(100)
-  content         Json          @db.JsonB
-  thumbnailUrl    String?       @db.VarChar(500)
-  thumbnailAlt    String?       @db.VarChar(255)
-  technologies    String[]      @default([])
-  projectUrl      String?       @db.VarChar(500)
+  clientName      String         @db.VarChar(255)
+  clientNameMode  ClientNameMode @default(FULL)
+  serviceCategory String         @db.VarChar(100)
+  summary         String         @db.Text
+  metricResult    String?        @db.VarChar(100)
+  content         Json           @db.JsonB
+  thumbnailUrl    String?        @db.VarChar(500)
+  thumbnailAlt    String?        @db.VarChar(255)
+  projectUrl      String?        @db.VarChar(500)
   isFeatured      Boolean       @default(false)
   sortOrder       Int           @default(0)
   status          ContentStatus @default(DRAFT)
